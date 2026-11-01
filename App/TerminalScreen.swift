@@ -27,8 +27,9 @@ struct TerminalScreen: View {
                     .textSelection(.enabled).padding(10)
             }
             NativeTerminal(model: model)
-                .ignoresSafeArea(.keyboard, edges: .bottom) // UIKit owns the full accessory+keyboard frame.
         }
+        // Keep the whole host steady while UIKit sizes the terminal above the keyboard/accessory.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .background(Color(red: 0.13, green: 0.13, blue: 0.13))
         .preferredColorScheme(.dark)
         .alert(item: $model.trustRequest) { request in
