@@ -1,0 +1,66 @@
+# Dependency investigation and architecture
+
+Investigated 2026-11-01, before implementing the app. This repository was empty.
+
+## Decision
+
+Use Lakr233’s **full Ghostty embedding fork**, not libghostty-vt alone and not an alternative terminal emulator. Use **Apple SwiftNIO SSH directly** for the transport. A SwiftUI connection form presents a UIKit terminal controller. All SSH state and writes live on one NIO event loop; Ghostty receives raw `Data` on its own parser queue.
+
+| Dependency | Pin | Reason |
+| --- | --- | --- |
+| [libghostty-spm](https://github.com/Lakr233/libghostty-spm/tree/2.2.2026102101) | `2.2.2026102101`, `5b9cb63d83e687b4a66d6c3a3c2a840341c576d9` | iOS Metal rendering, native input/selection, host-managed I/O |
+| [Upstream Ghostty](https://github.com/ghostty-org/ghostty/tree/1e9e14af5df14211892f5fc15fd21a49c7d94868) | embedded fork’s `Ghostty.ref`: `1e9e14af5df14211892f5fc15fd21a49c7d94868` | Terminal parser, grid, Unicode, renderer and font pipeline |
+| [SwiftNIO SSH](https://github.com/apple/swift-nio-ssh/tree/0.15.1) | `0.15.1`, `d1985926494b624e751b379009dc83f3395fd88a` | Apple implementation, Ed25519, host-verification delegate, PTY/shell/window events |
+| [SwiftNIO](https://github.com/apple/swift-nio/tree/2.81.0) | `2.81.0` | Ordered byte transport, channel lifecycle and backpressure |
+| [Swift Crypto](https://github.com/apple/swift-crypto/tree/4.0.0) | `4.0.0` | Ed25519 and SHA256; matches NIOSSH’s accepted range |
+
+Both resolved files pin transitive versions/revisions, including DisplayLink `3.0.1`. Ghostty’s binary target URL points to `upstream.1e9e14af5df1-3/GhosttyKit.xcframework.zip`, with package-verified SHA256 checksum `0bf7e5e13f8e42ffca040a6cef7e985fc30bcaa81ff513bd2a93eb097398c6d8`.
+
+## APIs verified in the pinned source
+
+`GhosttyTerminal` supplies `TerminalView` (an alias for `UITerminalView` on iOS), `TerminalController`, `TerminalSurfaceOptions`, and `InMemoryTerminalSession`. Selecting `TerminalSurfaceOptions(backend: .inMemory(session))` activates the fork’s `GHOSTTY_SURFACE_IO_BACKEND_HOST_MANAGED` extension. This avoids spawning a local PTY or subprocess inside iPadOS.
+
+- `InMemoryTerminalSession(write:resize:)`: raw terminal-generated keyboard/protocol bytes → `SSHTransport.send`; viewport callback → `SSHTransport.resize`.
+- `session.receive(Data)`: SSH stdout/stderr → Ghostty parser → Metal renderer. Never decode and re-encode chunks as strings; UTF-8 and escape sequences can span packets.
+- `session.setOutputBacklogHandler(highWater:lowWater:_:)`: pauses/resumes both TCP and SSH child auto-read at 1 MiB/256 KiB of unparsed output. Already received/in-flight packets can overshoot the threshold. This avoids an indefinitely growing output queue when the renderer/parser lags.
+- `TerminalView.fitToSize()`: recomputes dimensions after layout changes. A keyboard-layout-guide constraint plus the full keyboard frame (including the accessory bar) keeps the last terminal rows visible.
+- `UITerminalView`: `UITextInput`, hardware keyboard handling, IME, key repeat, touch selection, local history scrolling, copy/paste, font zoom and accessory bar are supplied by the package. We do not encode keystrokes ourselves.
+
+The upstream [embedding header](https://github.com/ghostty-org/ghostty/blob/1e9e14af5df14211892f5fc15fd21a49c7d94868/include/ghostty.h) identifies this as an internal embedder API. The stable VT-focused library offers terminal state/parsing; it is not a drop-in replacement for this fork’s native Metal view and host-managed I/O. The integration is therefore deliberately isolated in `App/`.
+
+## SSH library comparison
+
+Apple NIOSSH provides everything needed for an interactive PTY, but requires application code for key storage, request acknowledgements and lifecycle. We use `NIOSSHClientUserAuthenticationDelegate`, `NIOSSHClientServerAuthenticationDelegate`, `UserAuthSuccessEvent`, a `.session` child channel, `PseudoTerminalRequest`, `ShellRequest` (or `ExecRequest` for tmux), `SSHChannelData`, and `WindowChangeRequest`. A successful socket write does not imply that the server accepted a PTY: requests are explicitly acknowledged in order before reporting Connected.
+
+[Citadel 0.12.1](https://github.com/orlandos-nl/Citadel/tree/0.12.1) was also inspected. It offers `withPTY`, a stdin writer, resize and private-key parsers over a fork of NIOSSH. Its convenience output stream uses an unbounded `AsyncThrowingStream`; the public writer does not expose direct channel read-pressure controls. Direct Apple NIOSSH makes terminal backpressure and cancellation easier to control and keeps the dependency graph smaller. Key import is deferred instead of bringing in a second SSH stack.
+
+## Lifecycle and security
+
+State: idle → connecting → verifying host → authenticating → opening shell → connected → disconnected/failed. A transport is one-shot; a fresh connection gets a fresh transport and terminal. Network operations never block the main thread. A 15-second TCP timeout, 30-second initial handshake timeout and 20-second post-verification setup timeout bound stalls. First-use host confirmation pauses the handshake timer while waiting for the user; cancellation closes the connection and resolves the pending verifier.
+
+The initial identity is a generated Ed25519 key. Its private seed and full trusted host keys use Keychain generic-password records with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, no synchronization and no access group. No private key enters UserDefaults, source control, terminal output or logs. Host trust is scoped by normalized hostname + port, independent of username. A corrupt/mismatching record fails closed; replacing trust requires an explicit user action after independent verification. Ghostty debug traffic logging is disabled. Remote OSC 52 clipboard access is denied.
+
+Input writes are serialized, with at most one write in flight and a 1 MiB pending-input limit. Overflow fails visibly instead of silently dropping terminal input. The NIO child’s writability gates further writes. Disconnect/error cancels deadlines, clears queued input and closes both channels. Final stdout is consumed until channel close. No keepalive or automatic reconnect policy is introduced in this milestone.
+
+Optional tmux attachment is a PTY followed by `ExecRequest` for `tmux new-session -A -s NAME`. Session names allow only ASCII letters, digits, hyphens and underscores (maximum 64 bytes). This avoids shell injection. tmux keeps the remote processes; TCP/SSH connections themselves are disposable. Multiple clients attaching to one tmux session follow tmux’s normal shared-session sizing behavior.
+
+## Build requirements and risks
+
+- App: Xcode 26+, Swift 6.2+, iOS SDK, iPadOS 17+, Metal-capable iPad mini. The Ghostty package itself supports iOS 15+, macOS 13+, Catalyst 15+ and visionOS 1+. Our target is deliberately narrower.
+- Normal builds download a prebuilt XCFramework. **No Zig installation or custom renderer is required.** Source rebuilding needs the fork’s patches/build scripts and Zig 0.16.0 for this pin. Its README notes Xcode 27’s optional Metal toolchain component (`xcodebuild -downloadComponent MetalToolchain`) for source builds.
+- The binary is a trimmed upstream build: VT, Metal, CoreText shaping and input remain; standalone runtime, custom shaders, inspector and Sentry are excluded. The fork adds iOS fixes and host-managed I/O. This patch dependency is the largest maintenance risk.
+- Device testing must confirm rotation, safe areas, keyboard accessory sizing, IME, clipboard, Unicode/font fallback, scrollback and high-volume output. Compiling the transport does not validate these.
+- App sandboxing is kept enabled. No local shell, private blur API or subprocess workaround is used by this app.
+- SSH term is `xterm-256color` so standard macOS terminfo works without installing a Ghostty terminfo entry. Remote shell integration scripts/file upload are not installed.
+- iPadOS may suspend the app or networking; manual reconnect to tmux is the persistence strategy. Neither the Mac nor tmux can be assumed to survive a Mac restart.
+
+## Licenses
+
+Ghostty and libghostty-spm are MIT. Apple SwiftNIO, SwiftNIO SSH and Swift Crypto are Apache-2.0 (SwiftNIO also includes its runtime exception). DisplayLink is MIT. Their transitive distributions include additional notices; preserve those if redistributing binaries. The wrapper’s optional theme catalog and sandbox shell are not linked by this app. See `THIRD_PARTY_NOTICES.md` and the pinned source licenses. Personal provisioning does not change third-party license obligations.
+
+## Sequence
+
+1. Investigate source APIs and pin dependencies — done.
+2. Build/test the independent SSH transport — see validation record.
+3. Wire the native Ghostty surface and minimal connection/trust UI — implemented; iOS build still requires Xcode.
+4. Complete simulator/device build, Mac shell, tmux and interactive coding-tool acceptance checks before expanding saved hosts/tabs or agent features.

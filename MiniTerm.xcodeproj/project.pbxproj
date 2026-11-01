@@ -1,0 +1,38 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+		E5769970B1649C68738BEB5C = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionView.swift"; sourceTree = "<group>"; };
+		4ECB522855E2C4CCFD6E8654 = { isa = PBXBuildFile; fileRef = E5769970B1649C68738BEB5C; };
+		EABFD7FC46C4DE0B3906BC40 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MiniTermApp.swift"; sourceTree = "<group>"; };
+		5914A52492631577D92E4BC1 = { isa = PBXBuildFile; fileRef = EABFD7FC46C4DE0B3906BC40; };
+		A37ADDCFF4D7A3A3791E999F = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalScreen.swift"; sourceTree = "<group>"; };
+		8A321AD76B3C185A4B854CA5 = { isa = PBXBuildFile; fileRef = A37ADDCFF4D7A3A3791E999F; };
+		881DC221C891FB159FA21F64 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalSessionModel.swift"; sourceTree = "<group>"; };
+		0C7067578CE57E4076610411 = { isa = PBXBuildFile; fileRef = 881DC221C891FB159FA21F64; };
+		A172CEDCAE47474B615C54D5 = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MiniTerm.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A5660BF89DD2D657048780AB = { isa = PBXGroup; children = (E5769970B1649C68738BEB5C, EABFD7FC46C4DE0B3906BC40, A37ADDCFF4D7A3A3791E999F, 881DC221C891FB159FA21F64,); path = App; sourceTree = "<group>"; };
+		4EDC8BFAFC6BD936B849F38C = { isa = PBXGroup; children = (A172CEDCAE47474B615C54D5,); name = Products; sourceTree = "<group>"; };
+		97A63A01E61FD439E8760B8E = { isa = PBXGroup; children = (A5660BF89DD2D657048780AB, 4EDC8BFAFC6BD936B849F38C,); sourceTree = "<group>"; };
+		A811B7AECA8864E174EAF047 = { isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/Lakr233/libghostty-spm.git"; requirement = {kind = exactVersion; version = 2.2.2026102101;}; };
+		552AFB5EC1B6A8F3B1B9D25D = { isa = XCLocalSwiftPackageReference; relativePath = .; };
+		8CE8FFC7F3B28F046116E983 = { isa = XCSwiftPackageProductDependency; package = A811B7AECA8864E174EAF047; productName = GhosttyTerminal; };
+		5BBDA17DBC659444AF85AAF8 = { isa = PBXBuildFile; productRef = 8CE8FFC7F3B28F046116E983; };
+		B2B86715669D70D7579C6E80 = { isa = XCSwiftPackageProductDependency; package = 552AFB5EC1B6A8F3B1B9D25D; productName = MiniTermCore; };
+		020D02197683BE45A1EB5D74 = { isa = PBXBuildFile; productRef = B2B86715669D70D7579C6E80; };
+		CAF85B0888D78F1F83771A07 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (4ECB522855E2C4CCFD6E8654, 5914A52492631577D92E4BC1, 8A321AD76B3C185A4B854CA5, 0C7067578CE57E4076610411,); runOnlyForDeploymentPostprocessing = 0; };
+		CAFD6B725820BD8EFB592E21 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (020D02197683BE45A1EB5D74, 5BBDA17DBC659444AF85AAF8,); runOnlyForDeploymentPostprocessing = 0; };
+		E89B30AA1DC30A6AD8C34610 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		433548979C024CC63B5F3B8D = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 6.0; DEBUG_INFORMATION_FORMAT = dwarf; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; ENABLE_TESTABILITY = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; }; name = Debug; };
+		B800A40FDE6F0A0218D9BCD2 = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 6.0; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_OPTIMIZATION_LEVEL = "-O"; ENABLE_TESTABILITY = NO; }; name = Release; };
+		3C05BEEE7303EE3FA7B250FA = { isa = XCConfigurationList; buildConfigurations = (433548979C024CC63B5F3B8D, B800A40FDE6F0A0218D9BCD2,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		7EBA50094BFA750F0608695D = { isa = XCBuildConfiguration; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = com.samesense.mini-term; PRODUCT_NAME = MiniTerm; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; TARGETED_DEVICE_FAMILY = 2; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Mini Term"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools"; INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Connect to your Mac over SSH on the local network."; INFOPLIST_KEY_UILaunchScreen_Generation = YES; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 0.1.0; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; }; name = Debug; };
+		792B3A5FC2586286261D1B60 = { isa = XCBuildConfiguration; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = com.samesense.mini-term; PRODUCT_NAME = MiniTerm; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; TARGETED_DEVICE_FAMILY = 2; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Mini Term"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools"; INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Connect to your Mac over SSH on the local network."; INFOPLIST_KEY_UILaunchScreen_Generation = YES; INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES; INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 0.1.0; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; }; name = Release; };
+		268CBE1AF5194DBF401BFB20 = { isa = XCConfigurationList; buildConfigurations = (7EBA50094BFA750F0608695D, 792B3A5FC2586286261D1B60,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		978354DB0C00FC78C3A5524F = { isa = PBXNativeTarget; buildConfigurationList = 268CBE1AF5194DBF401BFB20; buildPhases = (CAF85B0888D78F1F83771A07, CAFD6B725820BD8EFB592E21, E89B30AA1DC30A6AD8C34610,); buildRules = (); dependencies = (); name = MiniTerm; packageProductDependencies = (B2B86715669D70D7579C6E80, 8CE8FFC7F3B28F046116E983,); productName = MiniTerm; productReference = A172CEDCAE47474B615C54D5; productType = "com.apple.product-type.application"; };
+		985959785319747668373CC6 = { isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 2600; TargetAttributes = {978354DB0C00FC78C3A5524F = {CreatedOnToolsVersion = 26.0;};};}; buildConfigurationList = 3C05BEEE7303EE3FA7B250FA; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base,); mainGroup = 97A63A01E61FD439E8760B8E; packageReferences = (552AFB5EC1B6A8F3B1B9D25D, A811B7AECA8864E174EAF047,); productRefGroup = 4EDC8BFAFC6BD936B849F38C; projectDirPath = ""; projectRoot = ""; targets = (978354DB0C00FC78C3A5524F,); };
+	};
+	rootObject = 985959785319747668373CC6;
+}

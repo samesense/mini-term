@@ -1,0 +1,26 @@
+name: Build and test
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Transport tests
+        run: swift test
+      - name: Verify project generation
+        run: |
+          python3 Scripts/generate_project.py
+          git diff --exit-code -- MiniTerm.xcodeproj
+      - name: Resolve app dependencies
+        run: xcodebuild -resolvePackageDependencies -project MiniTerm.xcodeproj -scheme MiniTerm
+      - name: Build for iPad simulator
+        run: xcodebuild -project MiniTerm.xcodeproj -scheme MiniTerm -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+      - name: Build for iPad device
+        run: xcodebuild -project MiniTerm.xcodeproj -scheme MiniTerm -destination 'generic/platform=iOS' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
