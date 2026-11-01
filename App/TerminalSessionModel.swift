@@ -17,6 +17,9 @@ final class TerminalBridge: @unchecked Sendable {
         lock.unlock()
         transport.resize(size)
     }
+    func detach() {
+        lock.lock(); transport = nil; lock.unlock()
+    }
     func send(_ data: Data) { current()?.send(data) }
     func pause(_ paused: Bool) { current()?.setOutputPaused(paused) }
     func resize(_ viewport: InMemoryTerminalViewport) {
@@ -88,6 +91,7 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
             request.completion(.failure(TerminalError.cancelled))
         }
         transport?.disconnect()
+        bridge.detach() // Break bridge → transport → output callback → session → bridge.
     }
 
     func answerTrust(_ request: HostTrustRequest, allow: Bool) {
@@ -122,6 +126,7 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
 
     private func didChangeState(_ state: ConnectionState) {
         self.state = state
+        if state.isFinished { bridge.detach() }
         if state.isFinished, let request = pendingTrust {
             pendingTrust = nil
             trustRequest = nil

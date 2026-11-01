@@ -112,7 +112,8 @@ public final class SSHTransport: @unchecked Sendable {
     }
 
     public func disconnect() {
-        loop.execute { [weak self] in self?.finish(.disconnected) }
+        // Keep the transport alive until cleanup has run even if its presenting view is dismissed now.
+        loop.execute { [self] in finish(.disconnected) }
     }
 
     fileprivate func verifyingHost() {

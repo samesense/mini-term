@@ -40,7 +40,7 @@ State: idle → connecting → verifying host → authenticating → opening she
 
 The initial identity is a generated Ed25519 key. Its private seed and full trusted host keys use Keychain generic-password records with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, no synchronization and no access group. No private key enters UserDefaults, source control, terminal output or logs. Host trust is scoped by normalized hostname + port, independent of username. A corrupt/mismatching record fails closed; replacing trust requires an explicit user action after independent verification. Ghostty debug traffic logging is disabled. Remote OSC 52 clipboard access is denied.
 
-Input writes are serialized, with at most one write in flight and a 1 MiB pending-input limit. Overflow fails visibly instead of silently dropping terminal input. The NIO child’s writability gates further writes. Disconnect/error cancels deadlines, clears queued input and closes both channels. Final stdout is consumed until channel close. No keepalive or automatic reconnect policy is introduced in this milestone.
+Input writes are serialized, with at most one write in flight and a 1 MiB pending-input limit. Overflow fails visibly instead of silently dropping terminal input. The NIO child’s writability gates further writes. Disconnect/error cancels deadlines, clears queued input and closes both channels. The UI detaches the byte bridge at termination to break its session/transport callback ownership cycle. Final stdout is consumed until channel close. No keepalive or automatic reconnect policy is introduced in this milestone.
 
 Optional tmux attachment is a PTY followed by `ExecRequest` for `tmux new-session -A -s NAME`. Session names allow only ASCII letters, digits, hyphens and underscores (maximum 64 bytes). This avoids shell injection. tmux keeps the remote processes; TCP/SSH connections themselves are disposable. Multiple clients attaching to one tmux session follow tmux’s normal shared-session sizing behavior.
 
@@ -62,5 +62,5 @@ Ghostty and libghostty-spm are MIT. Apple SwiftNIO, SwiftNIO SSH and Swift Crypt
 
 1. Investigate source APIs and pin dependencies — done.
 2. Build/test the independent SSH transport — see validation record.
-3. Wire the native Ghostty surface and minimal connection/trust UI — implemented; iOS build still requires Xcode.
-4. Complete simulator/device build, Mac shell, tmux and interactive coding-tool acceptance checks before expanding saved hosts/tabs or agent features.
+3. Wire the native Ghostty surface and minimal connection/trust UI — implemented; unsigned iOS simulator and device builds passed in Xcode CI.
+4. Complete signing/device installation, Mac shell, tmux and interactive coding-tool acceptance checks before expanding saved hosts/tabs or agent features.

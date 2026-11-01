@@ -2,7 +2,7 @@
 
 A native iPad SSH terminal for connecting to a Mac and resuming tmux coding sessions. SwiftUI hosts a UIKit **Ghostty Metal terminal**; Apple SwiftNIO SSH provides the encrypted PTY transport.
 
-**Status:** initial implementation. The transport can be built and tested separately on macOS. The iPad app requires Xcode 26+ and the device checklist below; no on-device validation is claimed. See [architecture and dependency investigation](docs/ARCHITECTURE.md) and [validation](docs/VALIDATION.md) for exact evidence and remaining risks.
+**Status:** initial implementation with **11 passing tests and successful unsigned iOS simulator/device builds in GitHub Actions**. The transport can also be built/tested separately on macOS. Signing, physical iPad operation and real-Mac acceptance testing remain to be completed; no on-device validation is claimed. See [architecture and dependency investigation](docs/ARCHITECTURE.md) and [validation](docs/VALIDATION.md) for exact evidence and remaining risks.
 
 ## Build and install on an iPad mini
 
@@ -71,4 +71,4 @@ Saved host profiles, tabs, automatic reconnect, tmux discovery, configurable kee
 
 `swift test` runs unit tests plus encrypted SSH connections to ephemeral loopback servers. They do not need an SSH daemon, personal credentials, or a reachable Mac. Tests cover byte-for-byte terminal traffic (including split UTF-8), request ordering, dimensions, connection states, rejected host keys and PTY rejection. See [the validation checklist](docs/VALIDATION.md) for interactive Mac/iPad acceptance tests.
 
-A GitHub Actions workflow is included for transport tests and unsigned iOS device/simulator builds. Its presence is not evidence of a successful run.
+GitHub Actions runs transport tests and unsigned iOS device/simulator builds. See the [successful initial validation run](https://github.com/samesense/mini-term/actions/runs/41339320493) and [latest workflow results](https://github.com/samesense/mini-term/actions).
