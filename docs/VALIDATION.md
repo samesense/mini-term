@@ -64,3 +64,9 @@ Run these on an iPad mini in both orientations. Record model, iPadOS/Xcode versi
 - [ ] Repeated connect/disconnect/remote `exit` releases sockets, event-loop threads, terminal surfaces and queued bytes. Final remote output stays visible until Done.
 
 Do not add tabs, automatic reconnect or coding-agent UI until the Ghostty ↔ real SSH terminal passes the core device cases.
+
+## Touch session-switcher milestone — 2026-11-01
+
+- **PASS:** local unsigned iPad device build with Xcode 27.2 after adding mouse-capture-aware keyboard behavior and an explicit keyboard button. Existing Personal Team signing settings were preserved.
+- **PASS:** isolated tmux 3.6a integration test using a real pseudo-terminal and SGR mouse events: tap session name → popup remains open → tap beta → attached client switches. Space/quote/leading-hyphen/literal-format names are included. Both top and bottom status bars work; a quote-containing session is selected by tap. An 8-row terminal selects the scrollable tree fallback.
+- **NOT CLAIMED:** physical iPad testing of the new tap behavior. The earlier base app was reported working on the iPad by the user.

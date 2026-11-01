@@ -6,6 +6,7 @@ import UIKit
 struct TerminalScreen: View {
     @ObservedObject var model: TerminalSessionModel
     @Environment(\.dismiss) private var dismiss
+    @State private var keyboardToggleRequest = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,6 +18,14 @@ struct TerminalScreen: View {
                 if !model.state.isFinished {
                     Text(model.state.label).font(.caption).foregroundStyle(.secondary)
                 }
+                Button {
+                    keyboardToggleRequest += 1
+                } label: {
+                    Image(systemName: "keyboard")
+                }
+                .accessibilityLabel("Show or hide keyboard")
+                .accessibilityIdentifier("terminal.keyboard")
+                .disabled(model.state.isFinished)
                 Button(model.state.isFinished ? "Done" : "Disconnect") {
                     model.disconnect(); dismiss()
                 }.font(.callout).accessibilityIdentifier("terminal.disconnect")
@@ -26,7 +35,7 @@ struct TerminalScreen: View {
                 Text(model.state.label).font(.callout).foregroundStyle(.secondary)
                     .textSelection(.enabled).padding(10)
             }
-            NativeTerminal(model: model)
+            NativeTerminal(model: model, keyboardToggleRequest: keyboardToggleRequest)
         }
         // Keep the whole host steady while UIKit sizes the terminal above the keyboard/accessory.
         .ignoresSafeArea(.keyboard, edges: .bottom)
@@ -44,15 +53,19 @@ struct TerminalScreen: View {
 
 private struct NativeTerminal: UIViewControllerRepresentable {
     let model: TerminalSessionModel
+    let keyboardToggleRequest: Int
     func makeUIViewController(context: Context) -> TerminalViewController { TerminalViewController(model: model) }
-    func updateUIViewController(_ uiViewController: TerminalViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: TerminalViewController, context: Context) {
+        uiViewController.updateKeyboardRequest(keyboardToggleRequest)
+    }
 }
 
 /// Ghostty supplies UITextInput, hardware keys, touch selection, clipboard, scrolling and its shortcut bar.
 /// The extra bottom constraint handles iPad versions where the keyboard guide omits the accessory bar.
 final class TerminalViewController: UIViewController {
     private let model: TerminalSessionModel
-    private let terminal = TerminalView(frame: .zero)
+    private let terminal = InteractiveTerminalView(frame: .zero)
+    private var lastKeyboardToggleRequest = 0
     private let controller = TerminalController { builder in
         builder.withFontSize(13)
         builder.withCustom("clipboard-read", "deny")
@@ -85,6 +98,12 @@ final class TerminalViewController: UIViewController {
                                                name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
     }
 
+    func updateKeyboardRequest(_ request: Int) {
+        guard request != lastKeyboardToggleRequest else { return }
+        lastKeyboardToggleRequest = request
+        terminal.toggleKeyboardFromToolbar()
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         terminal.becomeFirstResponder()
@@ -98,5 +117,18 @@ final class TerminalViewController: UIViewController {
         let frame = view.convert(end, from: screen.coordinateSpace)
         let docked = frame.minX <= view.bounds.minX && frame.maxX >= view.bounds.maxX
         keyboardOverlap.constant = docked ? min(0, frame.minY - view.safeAreaLayoutGuide.layoutFrame.maxY) : 0
+    }
+}
+
+/// A tap still travels through Ghostty's normal mouse pipeline. While a remote TUI
+/// owns the mouse, keep its grid steady instead of toggling the keyboard after each click.
+private final class InteractiveTerminalView: TerminalView {
+    override func toggleSoftwareKeyboard() {
+        guard !isMouseCaptured else { return }
+        super.toggleSoftwareKeyboard()
+    }
+
+    func toggleKeyboardFromToolbar() {
+        super.toggleSoftwareKeyboard()
     }
 }

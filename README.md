@@ -57,6 +57,24 @@ With a tmux session name, the app requests a PTY and runs `tmux new-session -A -
 
 Use the Ghostty keyboard accessory bar for terminal keys/modifiers; external keyboards use Ghostty’s native key handling. Long press/double tap for selection and copy, use the edit menu or hardware shortcut to paste, and use two-finger scrolling for local history. Pinch or Ghostty’s font-size keyboard shortcuts adjust the terminal font. Remote OSC 52 clipboard access is denied; user-initiated copy/paste remains available. Only text clipboard contents make sense over SSH; app-local file paths are not uploaded to your Mac.
 
+## Tap to switch tmux sessions
+
+On the Mac that runs tmux (3.2+), from this checkout run:
+
+```sh
+python3 Scripts/install_tmux_switcher.py
+```
+
+The installer copies a small menu helper and config into `~/.config/mini-term/`, backs up your tmux config before adding an include, and enables the binding on an already-running server. It detects gpakosz’s `.tmux.conf.local` customization file. It enables tmux mouse mode and binds a left click on the **session name at the left of the status line** to a popup listing all sessions on that tmux server. This binding also works from mouse-capable desktop terminals. It preserves your existing prefix and keyboard session-switching bindings.
+
+Rebuild Mini Term in Xcode with **⌘R** to install the touch behavior update. Tap the status-line session name, then tap a session in the popup. Other sessions and their programs keep running. A very short terminal or long session list uses tmux’s scrollable session tree instead; select an item or press `q` to cancel. The popup lists sessions on the current tmux socket, not separate tmux servers.
+
+While tmux (or another remote TUI) has mouse capture enabled, terminal taps send clicks without opening/closing the software keyboard. Use the **keyboard button in the top bar** to show or hide it. In an ordinary shell without mouse capture, tapping still toggles the keyboard as before.
+
+For another Mac, install the same files there. The script accepts `--config /path/to/tmux.conf` for a custom setup and `--no-reload` to defer activation until the next tmux startup. No SSH credentials or agent processes are changed.
+
+To validate the menu against an isolated tmux server, run `python3 Scripts/test_tmux_switcher.py`. The test sends real terminal mouse sequences, verifies the popup stays open after a tap and switches on the next tap, checks names containing spaces/quotes/literal formats, and exercises the short-screen fallback.
+
 ## Current scope
 
 - One SSH connection and one full-screen terminal.

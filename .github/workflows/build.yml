@@ -14,6 +14,10 @@ jobs:
           swift --version
       - name: Transport tests
         run: swift test
+      - name: tmux switcher interaction
+        run: |
+          brew list --versions tmux || brew install tmux
+          python3 Scripts/test_tmux_switcher.py
       - name: Verify project generation
         run: |
           python3 Scripts/generate_project.py
