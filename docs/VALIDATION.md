@@ -104,3 +104,11 @@ Device acceptance, not yet claimed:
 - **PASS:** signed simulator build with Xcode 27.2.
 - **PASS:** `Scripts/test_keyboard_layout.py` compiled the production layout helper into an isolated UIKit simulator app. All 10 checks passed without unsatisfiable-constraint warnings: docked keyboard, the reported short-host/stale-offset scenario, full occlusion, size restoration, narrow window, floating/undocked keyboards, dismissal and absent frame.
 - **NOT CLAIMED:** physical iPad retest of the original sequence, keyboard accessory placement or rotation. Rebuild on the iPad and repeat the keyboard show/hide and resizing actions that produced the log.
+
+## Terminal bottom-edge correction — 2026-11-01
+
+- The physical iPad photo showed an unused strip below the tmux status line. Both the SwiftUI container and UIKit terminal constraints stopped at the bottom safe area; the keyboard guide also reserved that inset while dismissed.
+- Extended only the bottom of the terminal into the container’s safe area and configured `usesBottomSafeArea = false`. Top/side safe areas and docked-keyboard avoidance remain in effect. The accessory fallback now measures from the same bottom edge.
+- **REGRESSION REPRODUCED:** before the fix, the UIKit probe expected a 1058-point terminal but got 1004 points when the host inherited a 54-point bottom inset.
+- **PASS:** signed iPad simulator build and all **14 UIKit layout checks**, including filling a nonzero bottom inset, docked keyboard placement, restoration after dismissal and preservation of the top safe area. No unsatisfiable-constraint warnings were emitted.
+- **NOT CLAIMED:** physical iPad visual retest. The terminal renderer still rounds its grid to whole character cells.

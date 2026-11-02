@@ -40,6 +40,7 @@ struct TerminalScreen: View {
         }
         // Keep the whole host steady while UIKit sizes the terminal above the keyboard/accessory.
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        .ignoresSafeArea(.container, edges: .bottom)
         .background(Color(red: 0.13, green: 0.13, blue: 0.13))
         .preferredColorScheme(.dark)
         .alert(item: $model.trustRequest) { request in
@@ -134,7 +135,10 @@ final class TerminalKeyboardLayout {
     init(terminal: UIView, host: UIView) {
         self.host = host
         let safe = host.safeAreaLayoutGuide
-        overlap = terminal.bottomAnchor.constraint(lessThanOrEqualTo: safe.bottomAnchor)
+        // When dismissed, the guide otherwise leaves a home-indicator-sized
+        // blank strip below the terminal. Keep top/side protection, but fill down.
+        host.keyboardLayoutGuide.usesBottomSafeArea = false
+        overlap = terminal.bottomAnchor.constraint(lessThanOrEqualTo: host.bottomAnchor)
         overlap.priority = UILayoutPriority(999)
         overlap.identifier = "terminal.keyboardAccessoryLimit"
         let fill = terminal.bottomAnchor.constraint(equalTo: host.keyboardLayoutGuide.topAnchor)
@@ -143,7 +147,7 @@ final class TerminalKeyboardLayout {
             terminal.topAnchor.constraint(equalTo: safe.topAnchor),
             terminal.leadingAnchor.constraint(equalTo: safe.leadingAnchor),
             terminal.trailingAnchor.constraint(equalTo: safe.trailingAnchor),
-            terminal.bottomAnchor.constraint(lessThanOrEqualTo: safe.bottomAnchor),
+            terminal.bottomAnchor.constraint(lessThanOrEqualTo: host.bottomAnchor),
             terminal.heightAnchor.constraint(greaterThanOrEqualToConstant: 0),
             overlap, fill,
         ])
@@ -151,10 +155,12 @@ final class TerminalKeyboardLayout {
 
     func update(keyboardFrame: CGRect?) {
         let safe = host.safeAreaLayoutGuide.layoutFrame
+        let bottom = host.bounds.maxY
+        let height = max(0, bottom - safe.minY)
         let docked = keyboardFrame.map {
-            $0.minX <= host.bounds.minX + 1 && $0.maxX >= host.bounds.maxX - 1 && $0.maxY >= safe.maxY
+            $0.minX <= host.bounds.minX + 1 && $0.maxX >= host.bounds.maxX - 1 && $0.maxY >= bottom
         } ?? false
-        let offset = docked ? max(-safe.height, min(0, keyboardFrame!.minY - safe.maxY)) : 0
+        let offset = docked ? max(-height, min(0, keyboardFrame!.minY - bottom)) : 0
         if overlap.constant != offset { overlap.constant = offset }
     }
 }

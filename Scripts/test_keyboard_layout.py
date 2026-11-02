@@ -46,6 +46,11 @@ final class ProbeSceneDelegate: UIResponder, UIWindowSceneDelegate {
 }
 
 final class ProbeController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        additionalSafeAreaInsets.bottom = 34
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         let host = UIView(frame: CGRect(x: 0, y: 100, width: 700, height: 659))
@@ -91,6 +96,27 @@ final class ProbeController: UIViewController {
         expect(400, "dismissed keyboard")
         layout.update(keyboardFrame: nil)
         expect(400, "no frame available")
+
+        // A terminal should use the home-indicator/window-handle region too.
+        host.frame.size.height = view.bounds.height - host.frame.minY
+        host.layoutIfNeeded()
+        guard host.safeAreaInsets.bottom > 0 else {
+            print("FAIL: probe must exercise a nonzero bottom safe area")
+            fflush(stdout)
+            exit(1)
+        }
+        layout.update(keyboardFrame: nil)
+        expect(host.bounds.height, "hidden keyboard fills bottom safe area")
+        let keyboardTop = host.bounds.height - 300
+        layout.update(keyboardFrame: CGRect(x: 0, y: keyboardTop, width: 700, height: 300))
+        expect(keyboardTop, "docked keyboard above bottom safe area")
+        layout.update(keyboardFrame: nil)
+        expect(host.bounds.height, "dismissal restores bottom safe area")
+        host.frame.origin.y = 0
+        host.frame.size.height = view.bounds.height
+        host.layoutIfNeeded()
+        layout.update(keyboardFrame: nil)
+        expect(host.bounds.height - host.safeAreaInsets.top, "top safe area remains respected")
         print("PASS: \(checks) terminal keyboard layout checks")
         fflush(stdout)
         exit(0)
@@ -120,7 +146,7 @@ final class ProbeController: UIViewController {
         try:
             result = run("xcrun", "simctl", "launch", "--console", sys.argv[1], bundle, capture_output=True, timeout=30)
             print(result.stdout)
-            if "PASS: 10 terminal keyboard layout checks" not in result.stdout or "Unable to simultaneously satisfy constraints" in result.stdout + result.stderr:
+            if "PASS: 14 terminal keyboard layout checks" not in result.stdout or "Unable to simultaneously satisfy constraints" in result.stdout + result.stderr:
                 sys.exit(result.stderr or "Keyboard layout probe failed")
         finally:
             run("xcrun", "simctl", "uninstall", sys.argv[1], bundle)
