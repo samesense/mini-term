@@ -112,3 +112,11 @@ Device acceptance, not yet claimed:
 - **REGRESSION REPRODUCED:** before the fix, the UIKit probe expected a 1058-point terminal but got 1004 points when the host inherited a 54-point bottom inset.
 - **PASS:** signed iPad simulator build and all **14 UIKit layout checks**, including filling a nonzero bottom inset, docked keyboard placement, restoration after dismissal and preservation of the top safe area. No unsatisfiable-constraint warnings were emitted.
 - **NOT CLAIMED:** physical iPad visual retest. The terminal renderer still rounds its grid to whole character cells.
+
+## Minimal connection screen — 2026-11-01
+
+- Removed the numbered navigation rail, large setup panels and decorative section controls. The main screen contains connection fields, Connect, a secondary save action with an explicit saved state, and saved destinations. Port editing is disclosed on demand; SSH identity, storage and host trust are in the gear-button Settings sheet. History sync errors retain a visible entry point.
+- **PASS:** signed simulator and unsigned device builds with Xcode 27.2.
+- **PASS:** populated portrait and accessibility-medium renders inspected, plus the Settings sheet shown through a simulator-only preview flag. README images and navigation instructions match the new layout.
+- **UNCHANGED:** connection-history model and SSH/Keychain action implementations. No transport or terminal-layout changes in this milestone.
+- **NOT CLAIMED:** physical iPad interaction, landscape visual validation, or real iCloud provider flow after moving it into Settings. Retest saving/filling, Settings → key copying, folder selection and the host-key confirmation on device.

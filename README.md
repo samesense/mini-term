@@ -8,13 +8,20 @@ A native iPad SSH terminal for connecting to a Mac and resuming tmux coding sess
 
 ## A look inside
 
-An LCARS-inspired connection console, saved destinations, and quick access to storage and SSH identity controls.
+A minimal connection screen with LCARS-inspired accents, saved destinations, and SSH/iCloud controls in Settings.
 
 | Connection console | Larger text |
 | :---: | :---: |
-| <img src="docs/design/lcars-portrait.png" alt="Mini Term on iPad mini: LCARS connection form, saved hosts, iCloud folder controls and SSH identity" width="360"> | <img src="docs/design/lcars-accessibility.png" alt="Mini Term connection console using an accessibility Dynamic Type size" width="360"> |
+| <img src="docs/design/lcars-portrait.png" alt="Mini Term on iPad mini: minimal connection form and saved hosts" width="360"> | <img src="docs/design/lcars-accessibility.png" alt="Mini Term connection screen using an accessibility Dynamic Type size" width="360"> |
 
 Captured from the running iPad mini simulator with fictional connection details. The second screenshot uses an accessibility Dynamic Type size.
+
+<details>
+<summary>SSH identity and history settings</summary>
+
+<img src="docs/design/lcars-settings.png" alt="Mini Term Settings sheet with SSH identity, history folder and host trust controls" width="420">
+
+</details>
 
 ## Build and install on an iPad mini
 
@@ -48,13 +55,13 @@ The `.xcodeproj` and shared scheme are checked in. To regenerate them after addi
 ## Prepare your Mac
 
 1. In System Settings → General → Sharing, enable **Remote Login** for your Mac user. Use that user’s short account name, rather than the display name. The Mac must be awake and reachable on the network.
-2. On the iPad, tap **Create iPad SSH key**, then **Copy public key**. Transfer that **public** key to the Mac using a trusted method. Mini Term generates an Ed25519 identity and stores its 32-byte private seed in the device-only, unlocked Keychain. This first version supports that generated identity; importing existing private keys, passphrases and SSH agents is not implemented.
+2. On the iPad, open **Settings** using the gear button, tap **Create SSH key**, then **Copy public key**. Transfer that **public** key to the Mac using a trusted method. Mini Term generates an Ed25519 identity and stores its 32-byte private seed in the device-only, unlocked Keychain. This first version supports that generated identity; importing existing private keys, passphrases and SSH agents is not implemented.
 3. On the Mac, create `~/.ssh` if needed, set its permissions to `700`, append the copied `ssh-ed25519 … mini-term-ipad` line to `~/.ssh/authorized_keys`, and set that file’s permissions to `600`. Preserve any existing lines. Never transfer the private seed.
 4. For persistent sessions, install tmux on the Mac if necessary. Mini Term checks the usual Apple Silicon and Intel Homebrew binary locations in addition to the remote PATH. You can also create a session beforehand with `tmux new-session -s codex` and start your preferred coding CLI there.
 
 ## Connect and resume work
 
-Enter the Mac’s hostname/IP (or Tailscale name/IP), username, and SSH port (usually `22`). Enter an optional tmux session name such as **`codex`**. Tap **Connect**.
+Enter the Mac’s hostname/IP (or Tailscale name/IP) and username. Enter an optional tmux session name such as **`codex`**. Expand **SSH port** if you need to change the default `22`, then tap **Connect**.
 
 The first connection asks you to verify the Mac’s host-key fingerprint. Compare it independently on the Mac, for example:
 
@@ -63,7 +70,7 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub
 ```
 
-Match the displayed SHA256 fingerprint to the relevant server key before tapping **Trust and connect**. Subsequent connections must present that same key for that hostname and port. A changed key is blocked. If the Mac was intentionally reinstalled or its SSH keys rotated, verify the new key independently, then use **Forget this host’s saved key…** on the connection screen. Host aliases/IPs have separate trust records.
+Match the displayed SHA256 fingerprint to the relevant server key before tapping **Trust and connect**. Subsequent connections must present that same key for that hostname and port. A changed key is blocked. If the Mac was intentionally reinstalled or its SSH keys rotated, verify the new key independently, then use **Forget this host’s saved key…** in **Settings → Host trust**. Host aliases/IPs have separate trust records.
 
 With a tmux session name, the app requests a PTY and runs `tmux new-session -A -s NAME`: it attaches to the named session or creates it. Launch Codex, Claude Code, Vim, or other programs from that remote shell. Disconnecting closes SSH; tmux owns the continuing remote processes. To resume, reconnect to the same Mac and enter the same name. The original SSH socket is never assumed to survive. An ordinary shell is requested when the tmux name is blank.
 
@@ -71,19 +78,19 @@ Use the Ghostty keyboard accessory bar for terminal keys/modifiers; external key
 
 ## Save connections and share history through iCloud Drive
 
-Rebuild/run Mini Term with **⌘R**. The connection form now has **Save connection** and **Saved & recent connections**. Successful logins are remembered automatically. Tap a history row to fill host, username, port and tmux session; the last selected connection is restored on launch. Use a row’s **…** menu to delete it. Up to 30 recent rows are shown.
+Rebuild/run Mini Term with **⌘R**. Use **Save connection** beneath Connect to save a new destination; it changes to **Saved connection** once stored. Successful logins are remembered automatically. Tap a saved row to fill host, username, port and tmux session; the last selected connection is restored on launch. Use a row’s **…** menu to delete it. Up to 30 recent rows are shown.
 
 For iCloud storage:
 
-1. Tap **CHOOSE iCLOUD FOLDER** under Connection Storage.
+1. Open **Settings** using the gear button and tap **Choose iCloud Drive folder** under Connection history.
 2. In the Files picker, go to **iCloud Drive**, create/select a folder such as **Mini Term**, and choose **Open**.
-3. On another device running Mini Term, select that same folder using the same Apple account. Connection metadata is merged when the app opens, after saves/deletes, and when the file provider reports changes. **Refresh** retries explicitly.
+3. On another device running Mini Term, select that same folder using the same Apple account. Connection metadata is merged when the app opens, after saves/deletes, and when the file provider reports changes. **Refresh history** in Settings retries explicitly.
 
 This uses ordinary user-selected iCloud Drive files, which works with the existing Personal Team build. It does not request CloudKit or app-private iCloud entitlements. Selecting **On My iPad** or another provider saves to that location instead; select iCloud Drive when you want iCloud synchronization. Apple controls upload/download timing, so updates may not appear on other devices immediately.
 
 Only host, username, port, optional tmux name and dates are stored. SSH private keys, trusted host keys, terminal commands and terminal output are excluded. Each device continues to use its own Keychain identity and host-verification records. A new device still needs its public key installed on the Mac and must verify the host fingerprint.
 
-The app keeps a local metadata cache for offline use and saves a persistent folder-access bookmark on this device. One JSON file per device avoids offline writers replacing each other's data; per-entry revisions and deletion records merge the history. Files remain in the chosen folder if you stop sync or remove the app. **Stop folder sync** in the storage **…** menu keeps your local connections and leaves those files untouched. If folder access is revoked or the folder is unavailable, reconnecting to SSH still works using the local history; select the folder again to restore sync.
+The app keeps a local metadata cache for offline use and saves a persistent folder-access bookmark on this device. One JSON file per device avoids offline writers replacing each other's data; per-entry revisions and deletion records merge the history. Files remain in the chosen folder if you stop sync or remove the app. **Stop folder sync** in Settings keeps your local connections and leaves those files untouched. If folder access is revoked or the folder is unavailable, reconnecting to SSH still works using the local history; select the folder again to restore sync.
 
 A clean reinstall can recover metadata by selecting the same folder again; recovering connection metadata does not recover SSH credentials. Physical iCloud Drive upload/download and bookmark restoration must be verified on device; the automated tests exercise local persistence, merge/conflict/deletion behavior and coordinated replica-file I/O.
 
@@ -125,8 +132,8 @@ On an Apple Silicon Mac with a booted iPad simulator, `python3 Scripts/test_keyb
 
 ## LCARS connection console and icon
 
-The connection page uses an LCARS-inspired palette and curved side rail. **LINK**, **SAVED**, **SYNC** and **KEYS** jump to the corresponding section. Landscape uses two columns; portrait and accessibility text sizes use a single scrolling column. Native text fields, keyboard focus, VoiceOver labels, saved-host selection, storage controls and host trust remain available. The main terminal screen keeps its existing layout.
+The connection page uses a restrained LCARS palette, condensed typography and a small pair of accent bars. The main screen contains host, username, optional tmux session, one primary **Connect** button, and saved destinations. Expand **SSH port** to change its default. The gear button opens **Settings** for SSH identity, history storage and host trust. Wide windows place saved connections beside the form; portrait and accessibility text sizes use a single scrolling column.
 
 The ghost-terminal app icon is installed through `App/Assets.xcassets`; generation details and the prompt are in [the icon record](docs/design/icon-generation.md). Rebuild/run with **⌘R** to update the page and Home Screen icon. If iPadOS retains the old icon briefly, close/reopen the app or give the Home Screen cache time to refresh; reinstalling is unnecessary.
 
-Design previews use an isolated iPad mini simulator and sample metadata. Debug simulator builds accept `--design-preview` to seed fictional destinations. These flags have no effect in physical-device or Release builds. Screenshots are in `docs/design/`.
+Design previews use an isolated iPad mini simulator and sample metadata. Debug simulator builds accept `--design-preview` to seed fictional destinations and `--design-settings` to show the settings sheet. These flags have no effect in physical-device or Release builds. Screenshots are in `docs/design/`.

@@ -8,9 +8,9 @@ import UniformTypeIdentifiers
 struct ConnectionView: View {
     @StateObject private var history = ConnectionHistoryModel()
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var didRestoreConnection = false
+    @State private var showSettings = false
     @State private var showSyncFolder = false
     @State private var host = ""
     @State private var username = ""
@@ -28,45 +28,43 @@ struct ConnectionView: View {
         !host.trimmingCharacters(in: .whitespaces).isEmpty && !username.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    private var isSaved: Bool {
+        guard let connection = try? formConnection() else { return false }
+        let id = ConnectionProfile(connection).id
+        return history.document.visibleEntries.contains { $0.id == id }
+    }
+
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
                 let wide = geometry.size.width >= 900 && !typeSize.isAccessibilitySize
-                let rail: CGFloat = typeSize.isAccessibilitySize ? 84 : (wide ? 88 : 72)
-                ScrollViewReader { proxy in
-                    VStack(spacing: 10) {
-                        header(rail: rail, wide: wide)
-                        HStack(alignment: .top, spacing: 18) {
-                            navigationRail(proxy: proxy, width: rail)
-                            ScrollView {
-                                if wide {
-                                    HStack(alignment: .top, spacing: 28) {
-                                        VStack(spacing: 28) {
-                                            connectionPanel.id("link")
-                                            identityPanel.id("keys")
-                                        }.frame(maxWidth: .infinity)
-                                        VStack(spacing: 28) {
-                                            historyPanel.id("saved")
-                                            storagePanel.id("sync")
-                                        }.frame(maxWidth: .infinity)
-                                    }
-                                } else {
-                                    VStack(spacing: 28) {
-                                        connectionPanel.id("link")
-                                        historyPanel.id("saved")
-                                        storagePanel.id("sync")
-                                        identityPanel.id("keys")
-                                    }
-                                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 32) {
+                        header
+                        HStack(spacing: 6) {
+                            Capsule().fill(LCARS.apricot).frame(width: 88, height: 6)
+                            Capsule().fill(LCARS.lavender).frame(width: 28, height: 6)
+                            Rectangle().fill(LCARS.muted.opacity(0.18)).frame(height: 1)
+                        }.accessibilityHidden(true)
+                        if wide {
+                            HStack(alignment: .top, spacing: 56) {
+                                connectionPanel.frame(maxWidth: .infinity)
+                                historyPanel.frame(width: 300)
                             }
-                            .scrollIndicators(.hidden)
-                            .scrollDismissesKeyboard(.interactively)
+                        } else {
+                            connectionPanel
+                            historyPanel
                         }
-                        footer(rail: rail)
+                        if history.syncError != nil {
+                            Button("History sync needs attention") { showSettings = true }
+                                .font(.footnote).foregroundStyle(LCARS.coral)
+                        }
                     }
-                    .padding(.horizontal, wide ? 24 : 18)
-                    .padding(.top, 12).padding(.bottom, 10)
+                    .frame(maxWidth: wide ? 960 : 560)
+                    .padding(.horizontal, 28).padding(.vertical, 32)
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .background(LCARS.background)
             .preferredColorScheme(.dark)
@@ -75,13 +73,12 @@ struct ConnectionView: View {
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .fullScreenCover(item: $session) { model in TerminalScreen(model: model) }
-            .confirmationDialog("Forget saved host key?", isPresented: $showForgetTrust, titleVisibility: .visible) {
-                Button("Forget host key", role: .destructive) { forgetTrust() }
-            } message: {
-                Text("Only do this after checking the Mac’s new fingerprint independently. The next connection will ask you to verify it again.")
-            }
+            .sheet(isPresented: $showSettings) { settingsSheet }
             .onAppear {
                 loadPublicKey()
+                #if DEBUG && targetEnvironment(simulator)
+                if ProcessInfo.processInfo.arguments.contains("--design-settings") { showSettings = true }
+                #endif
                 if !didRestoreConnection {
                     didRestoreConnection = true
                     if let profile = history.lastSelectedProfile { fill(profile) }
@@ -95,130 +92,107 @@ struct ConnectionView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { history.refresh() }
             }
-            .fileImporter(isPresented: $showSyncFolder, allowedContentTypes: [.folder]) { result in
-                switch result {
-                case .success(let folder): history.chooseFolder(folder)
-                case .failure(let error): history.showSyncError(error)
-                }
-            }
         }
     }
 
-    private func header(rail: CGFloat, wide: Bool) -> some View {
-        HStack(alignment: .center, spacing: 18) {
-            LCARSElbow().fill(LCARS.apricot)
-                .frame(width: rail, height: wide ? 96 : 108).accessibilityHidden(true)
+    private var header: some View {
+        HStack(spacing: 14) {
+            Image("BrandMark").resizable().scaledToFit()
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 12)).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Text("LCARS  /  REMOTE ACCESS")
-                    .font(.system(.caption, design: .monospaced).weight(.semibold))
-                    .tracking(1.4).foregroundStyle(LCARS.apricot)
-                Text("MINI TERM")
-                    .font(.system(size: typeSize.isAccessibilitySize ? 36 : (wide ? 42 : 49), weight: .black))
-                    .fontWidth(.condensed).tracking(-1).foregroundStyle(LCARS.cream)
-                    .minimumScaleFactor(0.65).lineLimit(1).accessibilityAddTraits(.isHeader)
-                Text("Your Mac. Anywhere.")
-                    .font(.subheadline).foregroundStyle(LCARS.muted)
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            if !typeSize.isAccessibilitySize {
-                Image("BrandMark").resizable().scaledToFit()
-                    .frame(width: wide ? 90 : 108, height: wide ? 90 : 108)
-                    .clipShape(RoundedRectangle(cornerRadius: 22))
-                    .accessibilityHidden(true)
+                Text("Mini Term").font(.system(.title2).weight(.bold)).fontWidth(.condensed)
+                    .foregroundStyle(LCARS.cream).accessibilityAddTraits(.isHeader)
+                Text("REMOTE ACCESS").font(.system(.caption2, design: .monospaced))
+                    .tracking(2).foregroundStyle(LCARS.apricot)
             }
+            Spacer(minLength: 12)
+            Button {
+                focusedField = nil
+                showSettings = true
+            } label: {
+                Image(systemName: "gearshape").font(.title3)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).foregroundStyle(LCARS.muted)
+            .accessibilityLabel("Settings").accessibilityIdentifier("connection.settings")
         }
-    }
-
-    private func navigationRail(proxy: ScrollViewProxy, width: CGFloat) -> some View {
-        VStack(spacing: 7) {
-            railButton("01", label: "LINK", target: "link", color: LCARS.apricot, proxy: proxy)
-            railButton("02", label: "SAVED", target: "saved", color: LCARS.lavender, proxy: proxy)
-            railButton("03", label: "SYNC", target: "sync", color: LCARS.coral, proxy: proxy)
-            railButton("04", label: "KEYS", target: "keys", color: LCARS.blue, proxy: proxy)
-            UnevenRoundedRectangle(bottomLeadingRadius: 26).fill(LCARS.apricot)
-                .frame(minHeight: 36, maxHeight: .infinity).accessibilityHidden(true)
-        }.frame(width: width)
-    }
-
-    private func railButton(_ number: String, label: String, target: String, color: Color, proxy: ScrollViewProxy) -> some View {
-        Button {
-            focusedField = nil
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .top) }
-        } label: {
-            VStack(alignment: .trailing, spacing: 10) {
-                Text(number).font(.system(.title3, design: .monospaced).weight(.bold))
-                    .lineLimit(1).minimumScaleFactor(0.5)
-                Text(label).font(.system(.caption, design: .default).weight(.heavy)).fontWidth(.condensed)
-                    .minimumScaleFactor(0.75).lineLimit(1)
-            }
-            .foregroundStyle(.black).padding(.horizontal, 10).padding(.vertical, 13)
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .background(color, in: UnevenRoundedRectangle(topLeadingRadius: 16, bottomLeadingRadius: 16))
-        }.buttonStyle(.plain).accessibilityLabel("Go to \(label.lowercased())")
     }
 
     private var connectionPanel: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            LCARSSectionHeading(number: "01", title: "REMOTE LINK", color: LCARS.apricot)
-            LCARSField(label: "HOST / ADDRESS", color: LCARS.apricot) {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Connect").font(.system(.largeTitle).weight(.semibold)).fontWidth(.condensed)
+                    .foregroundStyle(LCARS.cream).accessibilityAddTraits(.isHeader)
+                Text("Your Mac. Right where you left it.")
+                    .font(.subheadline).foregroundStyle(LCARS.muted)
+            }.padding(.bottom, 6)
+            LCARSField(label: "HOST") {
                 TextField("Host", text: $host, prompt: Text("mac-mini.local").foregroundStyle(LCARS.muted))
                     .textContentType(.URL).keyboardType(.URL).submitLabel(.next)
                     .focused($focusedField, equals: .host).onSubmit { focusedField = .username }
                     .accessibilityIdentifier("connection.host").accessibilityLabel("Hostname or IP address")
             }
-            HStack(alignment: .top, spacing: 14) {
-                LCARSField(label: "USERNAME", color: LCARS.apricot) {
-                    TextField("Username", text: $username, prompt: Text("Mac username").foregroundStyle(LCARS.muted))
-                        .textContentType(.username).submitLabel(.next)
-                        .focused($focusedField, equals: .username).onSubmit { focusedField = .port }
-                        .accessibilityIdentifier("connection.username").accessibilityLabel("Mac username")
-                }
-                LCARSField(label: "PORT", color: LCARS.apricot) {
-                    TextField("22", text: $port).keyboardType(.numberPad)
-                        .focused($focusedField, equals: .port)
-                        .accessibilityIdentifier("connection.port").accessibilityLabel("SSH port")
-                }.frame(maxWidth: 110)
+            LCARSField(label: "USERNAME") {
+                TextField("Username", text: $username, prompt: Text("Mac username").foregroundStyle(LCARS.muted))
+                    .textContentType(.username).submitLabel(.next)
+                    .focused($focusedField, equals: .username).onSubmit { focusedField = .session }
+                    .accessibilityIdentifier("connection.username").accessibilityLabel("Mac username")
             }
-            LCARSField(label: "TMUX SESSION  /  OPTIONAL", color: LCARS.apricot) {
-                TextField("Session", text: $tmuxSession, prompt: Text("codex").foregroundStyle(LCARS.muted)).submitLabel(.go)
-                    .focused($focusedField, equals: .session)
+            LCARSField(label: "TMUX SESSION") {
+                TextField("Session", text: $tmuxSession, prompt: Text("Optional").foregroundStyle(LCARS.muted))
+                    .submitLabel(.go).focused($focusedField, equals: .session)
                     .onSubmit { if canConnect { connect() } }
                     .accessibilityIdentifier("connection.tmux").accessibilityLabel("Optional tmux session")
             }
-            Text("Resume a named session, or leave blank for a regular shell.")
-                .font(.footnote).foregroundStyle(LCARS.muted)
-            HStack(spacing: 10) {
-                Button("SAVE", action: saveConnection)
-                    .buttonStyle(LCARSButtonStyle(color: LCARS.lavender))
-                    .accessibilityLabel("Save connection").accessibilityIdentifier("connection.save")
-                Button(action: connect) {
-                    HStack { Text("CONNECT"); Spacer(); Image(systemName: "arrow.up.right") }
+            DisclosureGroup {
+                LCARSField(label: "SSH PORT") {
+                    TextField("22", text: $port).keyboardType(.numberPad)
+                        .focused($focusedField, equals: .port)
+                        .accessibilityIdentifier("connection.port").accessibilityLabel("SSH port")
+                }.padding(.top, 12)
+            } label: {
+                Text("SSH port · \(port)").font(.footnote).foregroundStyle(LCARS.muted)
+            }.tint(LCARS.muted)
+            Button(action: connect) {
+                HStack { Spacer(); Text("Connect"); Image(systemName: "arrow.up.right"); Spacer() }
+            }
+            .buttonStyle(LCARSButtonStyle(color: LCARS.apricot)).disabled(!canConnect)
+            .accessibilityIdentifier("connection.connect")
+            HStack {
+                if isSaved {
+                    Label("Saved connection", systemImage: "checkmark").foregroundStyle(LCARS.muted)
+                } else {
+                    Button("Save connection", action: saveConnection)
+                        .disabled(!canConnect).accessibilityIdentifier("connection.save")
                 }
-                .buttonStyle(LCARSButtonStyle(color: LCARS.apricot))
-                .accessibilityIdentifier("connection.connect")
-            }.disabled(!canConnect)
+                Spacer()
+            }.font(.footnote).frame(minHeight: 28)
             if let error {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout).foregroundStyle(LCARS.coral).textSelection(.enabled)
                     .accessibilityIdentifier("connection.error")
             }
+            if publicKey.isEmpty {
+                Button("Set up this iPad’s SSH key") {
+                    focusedField = nil
+                    showSettings = true
+                }.font(.footnote).accessibilityIdentifier("connection.setupKey")
+            }
         }
     }
 
-    private var historyPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            LCARSSectionHeading(number: "02", title: "SAVED CONNECTIONS", color: LCARS.lavender)
-            if history.document.visibleEntries.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Image(systemName: "point.3.connected.trianglepath.dotted")
-                        .font(.title2).foregroundStyle(LCARS.lavender).accessibilityHidden(true)
-                    Text("Your next connection starts here.").font(.callout.weight(.semibold)).foregroundStyle(LCARS.cream)
-                    Text("Save a destination above. Successful connections appear here automatically.")
-                        .font(.footnote).foregroundStyle(LCARS.muted)
-                }.padding(.vertical, 8)
-            } else {
+    @ViewBuilder private var historyPanel: some View {
+        if !history.document.visibleEntries.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("SAVED CONNECTIONS").font(.system(.caption, design: .monospaced).weight(.medium))
+                    .tracking(1.5).foregroundStyle(LCARS.lavender).accessibilityAddTraits(.isHeader)
+                    .padding(.bottom, 6)
                 ForEach(Array(history.document.visibleEntries.prefix(30))) { entry in
                     if let profile = entry.profile { savedRow(entry: entry, profile: profile) }
                 }
+                Text("Tap a destination to fill the form.")
+                    .font(.caption).foregroundStyle(LCARS.muted).padding(.top, 4)
             }
         }
     }
@@ -230,18 +204,18 @@ struct ConnectionView: View {
             Button {
                 fill(profile); history.select(profile); focusedField = nil
             } label: {
-                HStack(spacing: 12) {
-                    Capsule().fill(selected ? LCARS.apricot : LCARS.lavender).frame(width: 5)
+                HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(profile.host).font(.system(.callout, design: .monospaced).weight(.semibold))
+                        Text(profile.host).font(.system(.callout, design: .monospaced).weight(.medium))
                             .foregroundStyle(LCARS.cream).lineLimit(1).truncationMode(.middle)
                         Text("\(profile.username) · \(profile.port) · \(profile.tmuxSession.isEmpty ? "shell" : profile.tmuxSession)")
                             .font(.caption.monospaced()).foregroundStyle(LCARS.muted).lineLimit(2)
                     }
                     Spacer(minLength: 0)
-                    Image(systemName: selected ? "checkmark" : "arrow.up.left")
-                        .font(.caption.weight(.bold)).foregroundStyle(selected ? LCARS.apricot : LCARS.lavender)
-                }.padding(.vertical, 12).padding(.leading, 12).padding(.trailing, 6)
+                    if selected {
+                        Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(LCARS.apricot)
+                    }
+                }.padding(.vertical, 14).padding(.leading, 16)
             }.buttonStyle(.plain).accessibilityLabel("Fill connection for \(profile.username) at \(profile.host)")
                 .accessibilityAddTraits(selected ? .isSelected : [])
             Menu {
@@ -250,84 +224,72 @@ struct ConnectionView: View {
                     Label("Delete saved connection", systemImage: "trash")
                 }
             } label: {
-                Image(systemName: "ellipsis").font(.body.weight(.bold)).foregroundStyle(LCARS.lavender)
-                    .frame(width: 44, height: 56)
+                Image(systemName: "ellipsis").foregroundStyle(LCARS.muted).frame(width: 44, height: 56)
             }.accessibilityLabel("Options for \(profile.host)")
         }
-        .background(selected ? LCARS.lavender.opacity(0.12) : LCARS.field, in: RoundedRectangle(cornerRadius: 8))
+        .background(selected ? LCARS.lavender.opacity(0.10) : LCARS.field, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var storagePanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            LCARSSectionHeading(number: "03", title: "CONNECTION STORAGE", color: LCARS.coral)
-            HStack(spacing: 10) {
-                Image(systemName: history.hasSyncFolder ? "folder" : "internaldrive")
-                    .font(.title3).foregroundStyle(LCARS.coral).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(history.isSyncing ? "Updating history…" : history.hasSyncFolder ? history.syncStatus : "Saved on this iPad")
-                        .font(.callout.weight(.semibold)).foregroundStyle(LCARS.cream)
-                    Text(history.hasSyncFolder ? "Local history stays available offline." : "Share your destinations through iCloud Drive.")
-                        .font(.footnote).foregroundStyle(LCARS.muted)
+    private var settingsSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    if publicKey.isEmpty {
+                        Button("Create SSH key", action: createIdentity).accessibilityIdentifier("settings.createKey")
+                    } else {
+                        Button("Copy public key") { UIPasteboard.general.string = publicKey }
+                            .accessibilityIdentifier("settings.copyKey")
+                        DisclosureGroup("View public key") {
+                            Text(publicKey).font(.caption.monospaced()).textSelection(.enabled)
+                        }
+                    }
+                } header: { Text("SSH identity") } footer: {
+                    Text("Add this iPad’s public key to your Mac’s authorized_keys. The private key stays in this iPad’s Keychain.")
                 }
-                Spacer(minLength: 0)
-                if history.isSyncing { ProgressView().tint(LCARS.coral) }
-            }
-            HStack(spacing: 10) {
-                Button(history.hasSyncFolder ? "CHANGE FOLDER" : "CHOOSE iCLOUD FOLDER") { showSyncFolder = true }
-                    .buttonStyle(LCARSButtonStyle(color: LCARS.coral))
-                    .accessibilityIdentifier("connection.chooseFolder")
-                if history.hasSyncFolder {
-                    Menu {
+                Section {
+                    HStack {
+                        Label(history.syncStatus, systemImage: history.hasSyncFolder ? "folder" : "internaldrive")
+                        if history.isSyncing { Spacer(); ProgressView() }
+                    }
+                    Button(history.hasSyncFolder ? "Change history folder" : "Choose iCloud Drive folder") { showSyncFolder = true }
+                        .accessibilityIdentifier("connection.chooseFolder")
+                    if history.hasSyncFolder {
                         Button("Refresh history") { history.refresh() }
                         Button("Stop folder sync", role: .destructive) { history.stopSyncing() }
-                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 48) }
-                    .accessibilityLabel("History storage options")
+                    }
+                    if let message = history.syncError {
+                        Text(message).foregroundStyle(LCARS.coral).textSelection(.enabled)
+                    }
+                } header: { Text("Connection history") } footer: {
+                    Text("Choose the same iCloud Drive folder on each device. Connections remain available offline. Other folders save to that location.")
                 }
-            }
-            Text("Choose the same iCloud Drive folder on each device. Other folders save to that location.")
-                .font(.footnote).foregroundStyle(LCARS.muted)
-            if let message = history.syncError {
-                Text(message).font(.footnote).foregroundStyle(LCARS.coral).textSelection(.enabled)
-            }
-        }
-    }
-
-    private var identityPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            LCARSSectionHeading(number: "04", title: "ACCESS & IDENTITY", color: LCARS.blue)
-            Label(publicKey.isEmpty ? "Create this iPad’s SSH identity" : "This iPad’s SSH identity is ready", systemImage: "key.fill")
-                .font(.callout.weight(.semibold)).foregroundStyle(LCARS.cream)
-            if publicKey.isEmpty {
-                Button("CREATE SSH KEY", action: createIdentity).buttonStyle(LCARSButtonStyle(color: LCARS.blue))
-            } else {
-                Button("COPY PUBLIC KEY") { UIPasteboard.general.string = publicKey }
-                    .buttonStyle(LCARSButtonStyle(color: LCARS.blue))
-                DisclosureGroup("View public key") {
-                    Text(publicKey).font(.caption.monospaced()).foregroundStyle(LCARS.cream).textSelection(.enabled).padding(.top, 8)
-                }.font(.footnote).tint(LCARS.blue)
-            }
-            Text("Add the public key to your Mac’s authorized_keys. The private key stays in this iPad’s Keychain.")
-                .font(.footnote).foregroundStyle(LCARS.muted)
-            DisclosureGroup("Connection help & host trust") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Enable Remote Login on the Mac and use its short username. Both devices need a network path to each other.")
+                Section {
                     Button("Forget this host’s saved key…", role: .destructive) { showForgetTrust = true }
                         .disabled(host.isEmpty)
-                }.font(.footnote).padding(.top, 8)
-            }.font(.footnote).tint(LCARS.blue)
-        }
+                } header: { Text("Host trust") } footer: {
+                    Text("For \(host.isEmpty ? "the host in the connection form" : host). Forget a saved key only after independently verifying that your Mac’s SSH key changed.")
+                }
+                if let error {
+                    Section { Text(error).foregroundStyle(LCARS.coral).textSelection(.enabled) }
+                }
+            }
+            .scrollContentBackground(.hidden).background(LCARS.background)
+            .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showSettings = false } } }
+            .fileImporter(isPresented: $showSyncFolder, allowedContentTypes: [.folder]) { result in
+                switch result {
+                case .success(let folder): history.chooseFolder(folder)
+                case .failure(let error): history.showSyncError(error)
+                }
+            }
+            .confirmationDialog("Forget saved host key?", isPresented: $showForgetTrust, titleVisibility: .visible) {
+                Button("Forget host key", role: .destructive) { forgetTrust() }
+            } message: {
+                Text("Only do this after checking the Mac’s new fingerprint independently. The next connection will ask you to verify it again.")
+            }
+        }.preferredColorScheme(.dark).tint(LCARS.lavender)
     }
 
-    private func footer(rail: CGFloat) -> some View {
-        HStack(spacing: 8) {
-            Capsule().fill(LCARS.apricot).frame(width: rail, height: 14)
-            Capsule().fill(LCARS.lavender).frame(maxWidth: .infinity).frame(height: 14)
-            Capsule().fill(LCARS.coral).frame(width: 36, height: 14)
-            Text("SECURE SHELL / PERSONAL TERMINAL")
-                .font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(LCARS.apricot)
-                .minimumScaleFactor(0.8).lineLimit(1)
-        }.accessibilityHidden(true)
-    }
     private func fill(_ profile: ConnectionProfile) {
         host = profile.host; username = profile.username
         port = String(profile.port); tmuxSession = profile.tmuxSession
@@ -403,34 +365,16 @@ private enum LCARS {
     static let muted = Color(red: 0.64, green: 0.66, blue: 0.72)
 }
 
-private struct LCARSSectionHeading: View {
-    let number: String
-    let title: String
-    let color: Color
-    var body: some View {
-        HStack(spacing: 10) {
-            Text(number).font(.system(.caption, design: .monospaced).weight(.bold))
-                .foregroundStyle(.black).padding(.horizontal, 12).padding(.vertical, 6)
-                .background(color, in: Capsule()).accessibilityHidden(true)
-            Text(title).font(.system(.subheadline, design: .default).weight(.heavy)).fontWidth(.condensed)
-                .tracking(1).foregroundStyle(color).accessibilityAddTraits(.isHeader)
-            Rectangle().fill(color).frame(height: 4).accessibilityHidden(true)
-        }
-    }
-}
-
 private struct LCARSField<Content: View>: View {
     let label: String
-    let color: Color
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label).font(.system(.caption2, design: .default).weight(.bold))
-                .fontWidth(.condensed).tracking(1.2).foregroundStyle(color).accessibilityHidden(true)
+                .tracking(1.2).foregroundStyle(LCARS.muted).accessibilityHidden(true)
             content.font(.system(.body, design: .monospaced)).foregroundStyle(LCARS.cream)
-                .padding(.horizontal, 12).frame(minHeight: 48)
-                .background(LCARS.field, in: RoundedRectangle(cornerRadius: 6))
-                .overlay(alignment: .bottom) { Rectangle().fill(color.opacity(0.65)).frame(height: 2) }
+                .padding(.horizontal, 14).frame(minHeight: 52)
+                .background(LCARS.field, in: RoundedRectangle(cornerRadius: 10))
         }
     }
 }
@@ -441,26 +385,9 @@ private struct LCARSButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(.system(.callout, design: .default).weight(.heavy)).fontWidth(.condensed)
             .tracking(0.8).foregroundStyle(.black)
-            .padding(.horizontal, 20).frame(minHeight: 48).frame(maxWidth: .infinity)
+            .padding(.horizontal, 20).frame(minHeight: 52).frame(maxWidth: .infinity)
             .background(color.opacity(isEnabled ? (configuration.isPressed ? 0.7 : 1) : 0.35), in: Capsule())
             .contentShape(Capsule())
-    }
-}
-
-private struct LCARSElbow: Shape {
-    func path(in rect: CGRect) -> Path {
-        let stem = min(34.0, rect.width * 0.5)
-        var path = Path()
-        path.move(to: CGPoint(x: 0, y: rect.height))
-        path.addLine(to: CGPoint(x: 0, y: 46))
-        path.addQuadCurve(to: CGPoint(x: 46, y: 0), control: .zero)
-        path.addLine(to: CGPoint(x: rect.width, y: 0))
-        path.addLine(to: CGPoint(x: rect.width, y: 27))
-        path.addLine(to: CGPoint(x: stem + 20, y: 27))
-        path.addQuadCurve(to: CGPoint(x: stem, y: 47), control: CGPoint(x: stem, y: 27))
-        path.addLine(to: CGPoint(x: stem, y: rect.height))
-        path.closeSubpath()
-        return path
     }
 }
 
