@@ -1,8 +1,20 @@
 # Mini Term
 
+<img src="App/Assets.xcassets/AppIcon.appiconset/AppIcon.png" alt="Mini Term ghost-terminal app icon" width="120">
+
 A native iPad SSH terminal for connecting to a Mac and resuming tmux coding sessions. SwiftUI hosts a UIKit **Ghostty Metal terminal**; Apple SwiftNIO SSH provides the encrypted PTY transport.
 
-**Status:** initial implementation with **11 passing tests and successful unsigned iOS simulator/device builds in GitHub Actions**. The transport can also be built/tested separately on macOS. Signing, physical iPad operation and real-Mac acceptance testing remain to be completed; no on-device validation is claimed. See [architecture and dependency investigation](docs/ARCHITECTURE.md) and [validation](docs/VALIDATION.md) for exact evidence and remaining risks.
+**Status:** **20 passing tests**, successful iOS simulator/device builds, and user-reported physical iPad SSH and touch session-switcher testing. Connection history supports an optional shared iCloud Drive folder; physical cloud synchronization remains to be verified. See [architecture and dependency investigation](docs/ARCHITECTURE.md) and [validation](docs/VALIDATION.md) for the recorded evidence and remaining checks.
+
+## A look inside
+
+An LCARS-inspired connection console, saved destinations, and quick access to storage and SSH identity controls.
+
+| Connection console | Larger text |
+| :---: | :---: |
+| <img src="docs/design/lcars-portrait.png" alt="Mini Term on iPad mini: LCARS connection form, saved hosts, iCloud folder controls and SSH identity" width="360"> | <img src="docs/design/lcars-accessibility.png" alt="Mini Term connection console using an accessibility Dynamic Type size" width="360"> |
+
+Captured from the running iPad mini simulator with fictional connection details. The second screenshot uses an accessibility Dynamic Type size.
 
 ## Build and install on an iPad mini
 
@@ -59,11 +71,11 @@ Use the Ghostty keyboard accessory bar for terminal keys/modifiers; external key
 
 ## Save connections and share history through iCloud Drive
 
-Rebuild/run Mini Term with **⌘R**. The connection form now has **Save connection** and **Saved & recent connections**. Successful logins are remembered automatically. Tap a history row to fill host, username, port and tmux session; the last selected connection is restored on launch. Swipe a row to delete it. Up to 30 recent rows are shown.
+Rebuild/run Mini Term with **⌘R**. The connection form now has **Save connection** and **Saved & recent connections**. Successful logins are remembered automatically. Tap a history row to fill host, username, port and tmux session; the last selected connection is restored on launch. Use a row’s **…** menu to delete it. Up to 30 recent rows are shown.
 
 For iCloud storage:
 
-1. Tap **Choose iCloud Drive folder…** under Connection history storage.
+1. Tap **CHOOSE iCLOUD FOLDER** under Connection Storage.
 2. In the Files picker, go to **iCloud Drive**, create/select a folder such as **Mini Term**, and choose **Open**.
 3. On another device running Mini Term, select that same folder using the same Apple account. Connection metadata is merged when the app opens, after saves/deletes, and when the file provider reports changes. **Refresh** retries explicitly.
 
@@ -71,7 +83,7 @@ This uses ordinary user-selected iCloud Drive files, which works with the existi
 
 Only host, username, port, optional tmux name and dates are stored. SSH private keys, trusted host keys, terminal commands and terminal output are excluded. Each device continues to use its own Keychain identity and host-verification records. A new device still needs its public key installed on the Mac and must verify the host fingerprint.
 
-The app keeps a local metadata cache for offline use and saves a persistent folder-access bookmark on this device. One JSON file per device avoids offline writers replacing each other's data; per-entry revisions and deletion records merge the history. Files remain in the chosen folder if you stop sync or remove the app. **Stop folder sync** keeps your local connections and leaves those files untouched. If folder access is revoked or the folder is unavailable, reconnecting to SSH still works using the local history; select the folder again to restore sync.
+The app keeps a local metadata cache for offline use and saves a persistent folder-access bookmark on this device. One JSON file per device avoids offline writers replacing each other's data; per-entry revisions and deletion records merge the history. Files remain in the chosen folder if you stop sync or remove the app. **Stop folder sync** in the storage **…** menu keeps your local connections and leaves those files untouched. If folder access is revoked or the folder is unavailable, reconnecting to SSH still works using the local history; select the folder again to restore sync.
 
 A clean reinstall can recover metadata by selecting the same folder again; recovering connection metadata does not recover SSH credentials. Physical iCloud Drive upload/download and bookmark restoration must be verified on device; the automated tests exercise local persistence, merge/conflict/deletion behavior and coordinated replica-file I/O.
 
@@ -108,3 +120,11 @@ Saved connections and recent history are available locally and optionally throug
 `swift test` runs unit tests plus encrypted SSH connections to ephemeral loopback servers. They do not need an SSH daemon, personal credentials, or a reachable Mac. Tests cover byte-for-byte terminal traffic (including split UTF-8), request ordering, dimensions, connection states, rejected host keys and PTY rejection. See [the validation checklist](docs/VALIDATION.md) for interactive Mac/iPad acceptance tests.
 
 GitHub Actions runs transport tests and unsigned iOS device/simulator builds. See the [successful initial validation run](https://github.com/samesense/mini-term/actions/runs/41339320493) and [latest workflow results](https://github.com/samesense/mini-term/actions).
+
+## LCARS connection console and icon
+
+The connection page uses an LCARS-inspired palette and curved side rail. **LINK**, **SAVED**, **SYNC** and **KEYS** jump to the corresponding section. Landscape uses two columns; portrait and accessibility text sizes use a single scrolling column. Native text fields, keyboard focus, VoiceOver labels, saved-host selection, storage controls and host trust remain available. The main terminal screen keeps its existing layout.
+
+The ghost-terminal app icon is installed through `App/Assets.xcassets`; generation details and the prompt are in [the icon record](docs/design/icon-generation.md). Rebuild/run with **⌘R** to update the page and Home Screen icon. If iPadOS retains the old icon briefly, close/reopen the app or give the Home Screen cache time to refresh; reinstalling is unnecessary.
+
+Design previews use an isolated iPad mini simulator and sample metadata. Debug simulator builds accept `--design-preview` to seed fictional destinations. These flags have no effect in physical-device or Release builds. Screenshots are in `docs/design/`.

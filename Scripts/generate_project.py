@@ -2,6 +2,11 @@
 """Generate the checked-in, conventional Xcode project. Python 3 stdlib only."""
 from pathlib import Path
 import hashlib
+import argparse
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--output-root", type=Path, help="Write a separate project copy without changing local signing settings")
+args = parser.parse_args()
 
 ROOT = Path(__file__).resolve().parent.parent
 objects = []
@@ -25,8 +30,10 @@ sources = sorted((ROOT / 'App').glob('*.swift'))
 for path in sources:
     add('file:' + path.name, f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {quoted(path.name)}; sourceTree = "<group>";')
     add('build:' + path.name, f'isa = PBXBuildFile; fileRef = {ref("file:" + path.name)};')
+add('file:Assets.xcassets', 'isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>";')
+add('build:Assets.xcassets', f'isa = PBXBuildFile; fileRef = {ref("file:Assets.xcassets")};')
 add('app', 'isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MiniTerm.app; sourceTree = BUILT_PRODUCTS_DIR;')
-add('AppGroup', 'isa = PBXGroup; children = (' + ', '.join(ref('file:' + p.name) for p in sources) + ',); path = App; sourceTree = "<group>";')
+add('AppGroup', 'isa = PBXGroup; children = (' + ', '.join(ref('file:' + p.name) for p in sources) + ', ' + ref('file:Assets.xcassets') + ',); path = App; sourceTree = "<group>";')
 add('Products', f'isa = PBXGroup; children = ({ref("app")},); name = Products; sourceTree = "<group>";')
 add('MainGroup', f'isa = PBXGroup; children = ({ref("AppGroup")}, {ref("Products")},); sourceTree = "<group>";')
 add('GhosttyPackage', 'isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/Lakr233/libghostty-spm.git"; requirement = {kind = exactVersion; version = 2.2.2026102101;};')
@@ -36,12 +43,13 @@ for name, package in [('GhosttyTerminal', 'GhosttyPackage'), ('MiniTermCore', 'C
     add('link:' + name, f'isa = PBXBuildFile; productRef = {ref("product:" + name)};')
 add('Sources', 'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (' + ', '.join(ref('build:' + p.name) for p in sources) + ',); runOnlyForDeploymentPostprocessing = 0;')
 add('Frameworks', 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (' + ', '.join(ref('link:' + n) for n in ['MiniTermCore', 'GhosttyTerminal']) + ',); runOnlyForDeploymentPostprocessing = 0;')
-add('Resources', 'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
+add('Resources', 'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (' + ref('build:Assets.xcassets') + ',); runOnlyForDeploymentPostprocessing = 0;')
 project_settings = {
     'CLANG_ENABLE_MODULES': 'YES', 'CLANG_ENABLE_OBJC_ARC': 'YES',
     'IPHONEOS_DEPLOYMENT_TARGET': '17.0', 'SDKROOT': 'iphoneos', 'SWIFT_VERSION': '6.0',
 }
 target_settings = {
+    'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon',
     'PRODUCT_BUNDLE_IDENTIFIER': 'com.samesense.mini-term', 'PRODUCT_NAME': 'MiniTerm',
     'CODE_SIGN_STYLE': 'Automatic', 'DEVELOPMENT_TEAM': '""', 'TARGETED_DEVICE_FAMILY': '2',
     'GENERATE_INFOPLIST_FILE': 'YES', 'INFOPLIST_KEY_CFBundleDisplayName': '"Mini Term"',
@@ -69,8 +77,8 @@ for scope, base in [('Project', project_settings), ('Target', target_settings)]:
     add(scope + 'Configs', f'isa = XCConfigurationList; buildConfigurations = ({ref(scope + "Debug")}, {ref(scope + "Release")},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
 add('Target', f'isa = PBXNativeTarget; buildConfigurationList = {ref("TargetConfigs")}; buildPhases = ({ref("Sources")}, {ref("Frameworks")}, {ref("Resources")},); buildRules = (); dependencies = (); name = MiniTerm; packageProductDependencies = ({ref("product:MiniTermCore")}, {ref("product:GhosttyTerminal")},); productName = MiniTerm; productReference = {ref("app")}; productType = "com.apple.product-type.application";')
 add('Project', f'isa = PBXProject; attributes = {{BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 2600; TargetAttributes = {{{ref("Target")} = {{CreatedOnToolsVersion = 26.0;}};}};}}; buildConfigurationList = {ref("ProjectConfigs")}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base,); mainGroup = {ref("MainGroup")}; packageReferences = ({ref("CorePackage")}, {ref("GhosttyPackage")},); productRefGroup = {ref("Products")}; projectDirPath = ""; projectRoot = ""; targets = ({ref("Target")},);')
-project = ROOT / 'MiniTerm.xcodeproj'
-project.mkdir(exist_ok=True)
+project = (args.output_root or ROOT) / 'MiniTerm.xcodeproj'
+project.mkdir(parents=True, exist_ok=True)
 (project / 'project.pbxproj').write_text('// !$*UTF8*$!\n{\n\tarchiveVersion = 1;\n\tclasses = {};\n\tobjectVersion = 56;\n\tobjects = {\n' + '\n'.join(objects) + f'\n\t}};\n\trootObject = {ref("Project")};\n}}\n')
 scheme = project / 'xcshareddata/xcschemes/MiniTerm.xcscheme'
 scheme.parent.mkdir(parents=True, exist_ok=True)

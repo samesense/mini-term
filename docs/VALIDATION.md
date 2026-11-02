@@ -88,3 +88,11 @@ Device acceptance, not yet claimed:
 - [ ] Stop folder sync and confirm local rows remain and folder files are retained. Choose the folder again and merge.
 - [ ] Verify selecting On My iPad is described as folder storage, rather than claiming iCloud synchronization.
 - [ ] Confirm SSH keys and trusted host records have not appeared in history JSON files, and a second device still requires its own SSH setup.
+
+## LCARS design milestone — 2026-11-01
+
+- **PASS:** iOS simulator and unsigned device builds with Xcode 27.2; signed simulator build launches without Keychain-entitlement errors.
+- **PASS:** iPad mini portrait render with populated saved-host fixtures inspected; native fields, all connection actions, storage and identity controls are present.
+- **PASS:** portrait render at accessibility-medium Dynamic Type inspected; side-rail labels and connection controls fit, with the remaining sections available by scrolling.
+- Added a 1024 × 1024 opaque app icon and matching in-app brand asset. Asset catalogs are wired into both the generated and local Xcode projects while preserving local signing.
+- Existing transport and history algorithms were not changed for this visual milestone. Physical iPad interaction, landscape rendering and other Dynamic Type sizes remain device acceptance items.
