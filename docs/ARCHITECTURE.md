@@ -64,3 +64,13 @@ Ghostty and libghostty-spm are MIT. Apple SwiftNIO, SwiftNIO SSH and Swift Crypt
 2. Build/test the independent SSH transport — see validation record.
 3. Wire the native Ghostty surface and minimal connection/trust UI — implemented; unsigned iOS simulator and device builds passed in Xcode CI.
 4. Complete signing/device installation, Mac shell, tmux and interactive coding-tool acceptance checks before expanding saved hosts/tabs or agent features.
+
+## Saved connections and iCloud Drive history
+
+The Personal Team build uses a **user-selected folder** through SwiftUI’s Files importer rather than app-private CloudKit/KVS. This preserves the existing signing configuration. See Apple’s [directory access guide](https://developer.apple.com/documentation/uikit/providing-access-to-directories?changes=l_5&language=objc) and [capability matrix](https://developer.apple.com/help/account/reference/supported-capabilities-ios).
+
+`ConnectionHistoryDocument` holds only connection metadata. Stable SHA256 identities deduplicate host/user/port/tmux combinations. Per-entry modification times and operation UUIDs converge deterministically; latest successful-connection dates are merged independently. Tombstones propagate deletion without old replicas resurrecting rows. The UI shows up to 30 records. The last selected profile and an offline cache use local UserDefaults; private keys and host trust remain in Keychain.
+
+`ConnectionHistoryCloudStore` runs coordinated file-provider I/O on an actor. Each device owns a replica file named `MiniTerm-<device UUID>.connections.json`, and imports the others before updating its own. Atomic writes, a 2 MB document limit, version checks and validation protect existing data from malformed files. Unchanged replicas are not rewritten. A directory `NSFilePresenter` observes external arrivals/changes; callbacks are debounced, and saves during an in-flight sync are merged and queued for another pass. Security-scoped access is balanced, the folder is persisted as a minimal bookmark, stale bookmarks are renewed, and revoked access produces a visible error while local history remains usable. Stopping sync invalidates the presenter, cancels pending work and removes the local bookmark without deleting cloud files.
+
+There is no assertion that a coordinated save means iCloud has uploaded it. Files-provider synchronization and cross-device delivery are eventual and require physical-device validation. Selecting a non-iCloud folder is supported but is not described as iCloud sync. Terminal commands/output and credentials are outside the history schema.

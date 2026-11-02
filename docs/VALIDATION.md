@@ -69,4 +69,22 @@ Do not add tabs, automatic reconnect or coding-agent UI until the Ghostty ↔ re
 
 - **PASS:** local unsigned iPad device build with Xcode 27.2 after adding mouse-capture-aware keyboard behavior and an explicit keyboard button. Existing Personal Team signing settings were preserved.
 - **PASS:** isolated tmux 3.6a integration test using a real pseudo-terminal and SGR mouse events: tap session name → popup remains open → tap beta → attached client switches. Space/quote/leading-hyphen/literal-format names are included. Both top and bottom status bars work; a quote-containing session is selected by tap. An 8-row terminal selects the scrollable tree fallback.
-- **NOT CLAIMED:** physical iPad testing of the new tap behavior. The earlier base app was reported working on the iPad by the user.
+- **USER-REPORTED PASS:** physical iPad testing of the tap-to-switch behavior.
+
+## Connection-history milestone — 2026-11-01
+
+- **PASS:** final unsigned iPad device build with Xcode 27.2.
+- **PASS:** all **20 tests in 3 suites**, including the 9 connection-history tests and existing SSH transport tests. Final local test run: 0.129 seconds after compilation.
+- **NOT CLAIMED:** physical iCloud Drive synchronization or folder-bookmark restoration on the iPad.
+
+Automated checks cover metadata round trips, stable identity/deduplication, offline merge convergence, deletion propagation, explicit restoration after deletion, skewed device clocks, tied revisions, recent-row limits, invalid/future documents, and two-device coordinated replica-file I/O. A corrupt remote file must not overwrite the local replica. Credentials and terminal content have no fields in this schema.
+
+Device acceptance, not yet claimed:
+
+- [ ] Save a connection, quit/relaunch, and verify the form restores it. Tap another row to fill all fields. A successful login updates recency; a failed login does not add history.
+- [ ] Choose/create a folder in iCloud Drive. Save and delete entries, confirm replica files appear in Files, and confirm they upload.
+- [ ] On another device, choose the same folder; verify additions, deduplication and deletion propagate. Make changes offline on both devices, reconnect, and check the merged list.
+- [ ] Quit/relaunch and confirm the folder bookmark works without another picker. Move/rename the folder and verify bookmark recovery; revoke access and confirm a visible error with local connections still usable.
+- [ ] Stop folder sync and confirm local rows remain and folder files are retained. Choose the folder again and merge.
+- [ ] Verify selecting On My iPad is described as folder storage, rather than claiming iCloud synchronization.
+- [ ] Confirm SSH keys and trusted host records have not appeared in history JSON files, and a second device still requires its own SSH setup.

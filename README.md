@@ -57,6 +57,24 @@ With a tmux session name, the app requests a PTY and runs `tmux new-session -A -
 
 Use the Ghostty keyboard accessory bar for terminal keys/modifiers; external keyboards use Ghostty’s native key handling. Long press/double tap for selection and copy, use the edit menu or hardware shortcut to paste, and use two-finger scrolling for local history. Pinch or Ghostty’s font-size keyboard shortcuts adjust the terminal font. Remote OSC 52 clipboard access is denied; user-initiated copy/paste remains available. Only text clipboard contents make sense over SSH; app-local file paths are not uploaded to your Mac.
 
+## Save connections and share history through iCloud Drive
+
+Rebuild/run Mini Term with **⌘R**. The connection form now has **Save connection** and **Saved & recent connections**. Successful logins are remembered automatically. Tap a history row to fill host, username, port and tmux session; the last selected connection is restored on launch. Swipe a row to delete it. Up to 30 recent rows are shown.
+
+For iCloud storage:
+
+1. Tap **Choose iCloud Drive folder…** under Connection history storage.
+2. In the Files picker, go to **iCloud Drive**, create/select a folder such as **Mini Term**, and choose **Open**.
+3. On another device running Mini Term, select that same folder using the same Apple account. Connection metadata is merged when the app opens, after saves/deletes, and when the file provider reports changes. **Refresh** retries explicitly.
+
+This uses ordinary user-selected iCloud Drive files, which works with the existing Personal Team build. It does not request CloudKit or app-private iCloud entitlements. Selecting **On My iPad** or another provider saves to that location instead; select iCloud Drive when you want iCloud synchronization. Apple controls upload/download timing, so updates may not appear on other devices immediately.
+
+Only host, username, port, optional tmux name and dates are stored. SSH private keys, trusted host keys, terminal commands and terminal output are excluded. Each device continues to use its own Keychain identity and host-verification records. A new device still needs its public key installed on the Mac and must verify the host fingerprint.
+
+The app keeps a local metadata cache for offline use and saves a persistent folder-access bookmark on this device. One JSON file per device avoids offline writers replacing each other's data; per-entry revisions and deletion records merge the history. Files remain in the chosen folder if you stop sync or remove the app. **Stop folder sync** keeps your local connections and leaves those files untouched. If folder access is revoked or the folder is unavailable, reconnecting to SSH still works using the local history; select the folder again to restore sync.
+
+A clean reinstall can recover metadata by selecting the same folder again; recovering connection metadata does not recover SSH credentials. Physical iCloud Drive upload/download and bookmark restoration must be verified on device; the automated tests exercise local persistence, merge/conflict/deletion behavior and coordinated replica-file I/O.
+
 ## Tap to switch tmux sessions
 
 On the Mac that runs tmux (3.2+), from this checkout run:
@@ -83,7 +101,7 @@ To validate the menu against an isolated tmux server, run `python3 Scripts/test_
 - Optional named tmux attachment for persistent remote work; reconnection is manual.
 - Connection errors are shown above the terminal; **Done** returns to the connection form.
 
-Saved host profiles, tabs, automatic reconnect, tmux discovery, configurable keepalives, file transfer, diff viewing, and agent notifications are later work. iPadOS can suspend networking in the background; tmux, not the app, provides process persistence. Connection fields are currently held in memory; the identity and trusted host keys are saved in Keychain.
+Saved connections and recent history are available locally and optionally through a selected iCloud Drive folder. Tabs, automatic reconnect, tmux discovery, configurable keepalives, file transfer, diff viewing, and agent notifications are later work. iPadOS can suspend networking in the background; tmux provides process persistence. The SSH identity and trusted host keys remain in Keychain.
 
 ## Tests
 

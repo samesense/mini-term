@@ -51,6 +51,7 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
     let terminalSession: InMemoryTerminalSession
     @Published private(set) var state: ConnectionState = .idle
     @Published var trustRequest: HostTrustRequest?
+    var onConnected: (() -> Void)?
     private let seed: Data
     private let keychain = KeychainStore()
     private let bridge: TerminalBridge
@@ -126,6 +127,7 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
 
     private func didChangeState(_ state: ConnectionState) {
         self.state = state
+        if state == .connected { onConnected?() }
         if state.isFinished { bridge.detach() }
         if state.isFinished, let request = pendingTrust {
             pendingTrust = nil
