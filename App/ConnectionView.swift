@@ -261,7 +261,7 @@ struct ConnectionView: View {
         VStack(alignment: .leading, spacing: 14) {
             LCARSSectionHeading(number: "03", title: "CONNECTION STORAGE", color: LCARS.coral)
             HStack(spacing: 10) {
-                Image(systemName: history.hasSyncFolder ? "folder.badge.icloud" : "internaldrive")
+                Image(systemName: history.hasSyncFolder ? "folder" : "internaldrive")
                     .font(.title3).foregroundStyle(LCARS.coral).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(history.isSyncing ? "Updating history…" : history.hasSyncFolder ? history.syncStatus : "Saved on this iPad")
