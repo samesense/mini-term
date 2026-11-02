@@ -121,6 +121,8 @@ Saved connections and recent history are available locally and optionally throug
 
 GitHub Actions runs transport tests and unsigned iOS device/simulator builds. See the [successful initial validation run](https://github.com/samesense/mini-term/actions/runs/41339320493) and [latest workflow results](https://github.com/samesense/mini-term/actions).
 
+On an Apple Silicon Mac with a booted iPad simulator, `python3 Scripts/test_keyboard_layout.py SIMULATOR_UDID` checks the terminal’s UIKit constraints during keyboard and container-size changes. It compiles the production layout helper into an isolated probe app, performs no SSH connections, and removes the probe afterward.
+
 ## LCARS connection console and icon
 
 The connection page uses an LCARS-inspired palette and curved side rail. **LINK**, **SAVED**, **SYNC** and **KEYS** jump to the corresponding section. Landscape uses two columns; portrait and accessibility text sizes use a single scrolling column. Native text fields, keyboard focus, VoiceOver labels, saved-host selection, storage controls and host trust remain available. The main terminal screen keeps its existing layout.

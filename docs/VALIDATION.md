@@ -96,3 +96,11 @@ Device acceptance, not yet claimed:
 - **PASS:** portrait render at accessibility-medium Dynamic Type inspected; side-rail labels and connection controls fit, with the remaining sections available by scrolling.
 - Added a 1024 × 1024 opaque app icon and matching in-app brand asset. Asset catalogs are wired into both the generated and local Xcode projects while preserving local signing.
 - Existing transport and history algorithms were not changed for this visual milestone. Physical iPad interaction, landscape rendering and other Dynamic Type sizes remain device acceptance items.
+
+## Keyboard constraint correction — 2026-11-01
+
+- The user reported a required 468-point keyboard offset inside a 191-point terminal host. The previous constraints demanded a negative terminal height.
+- The SwiftUI terminal now explicitly fills the available space. Keyboard frames are converted again during container layout; the accessory offset is bounded by the current safe-area height. Required constraints keep the terminal inside its container with a nonnegative height, while keyboard positioning can yield during transitional geometry.
+- **PASS:** signed simulator build with Xcode 27.2.
+- **PASS:** `Scripts/test_keyboard_layout.py` compiled the production layout helper into an isolated UIKit simulator app. All 10 checks passed without unsatisfiable-constraint warnings: docked keyboard, the reported short-host/stale-offset scenario, full occlusion, size restoration, narrow window, floating/undocked keyboards, dismissal and absent frame.
+- **NOT CLAIMED:** physical iPad retest of the original sequence, keyboard accessory placement or rotation. Rebuild on the iPad and repeat the keyboard show/hide and resizing actions that produced the log.

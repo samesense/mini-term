@@ -36,6 +36,7 @@ struct TerminalScreen: View {
                     .textSelection(.enabled).padding(10)
             }
             NativeTerminal(model: model, keyboardToggleRequest: keyboardToggleRequest)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         // Keep the whole host steady while UIKit sizes the terminal above the keyboard/accessory.
         .ignoresSafeArea(.keyboard, edges: .bottom)
@@ -71,7 +72,8 @@ final class TerminalViewController: UIViewController {
         builder.withCustom("clipboard-read", "deny")
         builder.withCustom("clipboard-write", "deny")
     }
-    private var keyboardOverlap: NSLayoutConstraint!
+    private var keyboardLayout: TerminalKeyboardLayout!
+    private var keyboardFrameOnScreen: CGRect?
 
     init(model: TerminalSessionModel) { self.model = model; super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -84,16 +86,7 @@ final class TerminalViewController: UIViewController {
         terminal.accessibilityIdentifier = "terminal.surface"
         terminal.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(terminal)
-        keyboardOverlap = terminal.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor)
-        let fill = terminal.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
-        fill.priority = .defaultHigh
-        NSLayoutConstraint.activate([
-            terminal.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            terminal.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            terminal.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            terminal.bottomAnchor.constraint(lessThanOrEqualTo: view.keyboardLayoutGuide.topAnchor),
-            keyboardOverlap, fill,
-        ])
+        keyboardLayout = TerminalKeyboardLayout(terminal: terminal, host: view)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged),
                                                name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
     }
@@ -109,14 +102,60 @@ final class TerminalViewController: UIViewController {
         terminal.becomeFirstResponder()
         model.start() // The Metal surface is mounted before remote output can arrive.
     }
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        updateKeyboardLayout()
+    }
+
     override func viewDidLayoutSubviews() { super.viewDidLayoutSubviews(); terminal.fitToSize() }
 
     @objc private func keyboardChanged(_ notification: Notification) {
-        guard let end = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
-              let screen = view.window?.windowScene?.screen else { return }
-        let frame = view.convert(end, from: screen.coordinateSpace)
-        let docked = frame.minX <= view.bounds.minX && frame.maxX >= view.bounds.maxX
-        keyboardOverlap.constant = docked ? min(0, frame.minY - view.safeAreaLayoutGuide.layoutFrame.maxY) : 0
+        guard let end = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        keyboardFrameOnScreen = end
+        updateKeyboardLayout()
+        view.setNeedsLayout()
+    }
+
+    private func updateKeyboardLayout() {
+        let frame = keyboardFrameOnScreen.flatMap { frame in
+            view.window.map { view.convert(frame, from: $0.screen.coordinateSpace) }
+        }
+        keyboardLayout.update(keyboardFrame: frame)
+    }
+}
+
+/// Keep required constraints valid even while SwiftUI and keyboard geometry update
+/// in separate passes. The accessory fallback must never demand a negative height.
+@MainActor
+final class TerminalKeyboardLayout {
+    private let host: UIView
+    private let overlap: NSLayoutConstraint
+
+    init(terminal: UIView, host: UIView) {
+        self.host = host
+        let safe = host.safeAreaLayoutGuide
+        overlap = terminal.bottomAnchor.constraint(lessThanOrEqualTo: safe.bottomAnchor)
+        overlap.priority = UILayoutPriority(999)
+        overlap.identifier = "terminal.keyboardAccessoryLimit"
+        let fill = terminal.bottomAnchor.constraint(equalTo: host.keyboardLayoutGuide.topAnchor)
+        fill.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            terminal.topAnchor.constraint(equalTo: safe.topAnchor),
+            terminal.leadingAnchor.constraint(equalTo: safe.leadingAnchor),
+            terminal.trailingAnchor.constraint(equalTo: safe.trailingAnchor),
+            terminal.bottomAnchor.constraint(lessThanOrEqualTo: safe.bottomAnchor),
+            terminal.heightAnchor.constraint(greaterThanOrEqualToConstant: 0),
+            overlap, fill,
+        ])
+    }
+
+    func update(keyboardFrame: CGRect?) {
+        let safe = host.safeAreaLayoutGuide.layoutFrame
+        let docked = keyboardFrame.map {
+            $0.minX <= host.bounds.minX + 1 && $0.maxX >= host.bounds.maxX - 1 && $0.maxY >= safe.maxY
+        } ?? false
+        let offset = docked ? max(-safe.height, min(0, keyboardFrame!.minY - safe.maxY)) : 0
+        if overlap.constant != offset { overlap.constant = offset }
     }
 }
 
