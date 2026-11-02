@@ -49,6 +49,7 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
     let id = UUID()
     let connection: SSHConnection
     let terminalSession: InMemoryTerminalSession
+    let preview: PreviewModel
     @Published private(set) var state: ConnectionState = .idle
     @Published var trustRequest: HostTrustRequest?
     var onConnected: (() -> Void)?
@@ -62,6 +63,7 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
     init(connection: SSHConnection, seed: Data, diagnostics: SessionDiagnostics? = nil) {
         self.connection = connection
         self.seed = seed
+        preview = PreviewModel(connection: connection)
         self.diagnostics = diagnostics ?? SessionDiagnostics(usesTmux: connection.tmuxSession != nil)
         let bridge = TerminalBridge()
         self.bridge = bridge
@@ -83,6 +85,7 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
             }
         }))
         self.transport = transport
+        preview.attach(transport)
         bridge.attach(transport)
         transport.connect(to: connection, seed: seed) { [weak self] key, completion in
             DispatchQueue.main.async {
@@ -99,10 +102,12 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
         disconnect()
         let next = TerminalSessionModel(connection: connection, seed: seed, diagnostics: diagnostics)
         next.onConnected = onConnected
+        next.preview.restore(from: preview)
         return next
     }
 
     func disconnect() {
+        preview.disconnected()
         if let request = pendingTrust {
             pendingTrust = nil
             trustRequest = nil
@@ -145,8 +150,8 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
     private func didChangeState(_ state: ConnectionState) {
         self.state = state
         diagnostics.record(state)
-        if state == .connected { onConnected?() }
-        if state.isFinished { bridge.detach() }
+        if state == .connected { preview.connectionReady(); onConnected?() }
+        if state.isFinished { preview.disconnected(); bridge.detach() }
         if state.isFinished, let request = pendingTrust {
             pendingTrust = nil
             trustRequest = nil

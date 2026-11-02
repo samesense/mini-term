@@ -8,6 +8,13 @@ import UIKit
 struct TerminalScreen: View {
     @ObservedObject var model: TerminalSessionModel
     var onReconnect: (() -> Void)? = nil
+    var body: some View { TerminalWorkspace(model: model, preview: model.preview, onReconnect: onReconnect) }
+}
+
+private struct TerminalWorkspace: View {
+    @ObservedObject var model: TerminalSessionModel
+    @ObservedObject var preview: PreviewModel
+    var onReconnect: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var keyboardToggleRequest = 0
     @State private var copiedDiagnostics = false
@@ -31,7 +38,13 @@ struct TerminalScreen: View {
                 }
                 .accessibilityLabel("Show or hide keyboard")
                 .accessibilityIdentifier("terminal.keyboard")
-                .disabled(model.state.isFinished)
+                .disabled(model.state.isFinished || preview.showing)
+                if preview.browser == nil && !preview.showing {
+                    Button { preview.beginEditing() } label: { Image(systemName: "globe") }
+                        .accessibilityLabel("Open website preview")
+                        .accessibilityIdentifier("terminal.preview")
+                        .disabled(model.state != .connected)
+                }
                 Menu {
                     Button {
                         UIPasteboard.general.string = AppDiagnostics.text(model.diagnostics)
@@ -46,6 +59,17 @@ struct TerminalScreen: View {
                 }.font(.callout).accessibilityIdentifier("terminal.disconnect")
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
+            if preview.showing || preview.browser != nil {
+                HStack {
+                    Picker("Workspace", selection: $preview.showing) {
+                        Text("Terminal").tag(false)
+                        Text("Preview").tag(true)
+                    }.pickerStyle(.segmented).frame(maxWidth: 280)
+                    Spacer(minLength: 8)
+                    Button("Port \(String(preview.selectedPort))") { preview.beginEditing() }.disabled(!preview.connected)
+                    Button { preview.close() } label: { Image(systemName: "xmark") }.accessibilityLabel("Close preview")
+                }.font(.callout).padding(.horizontal, 12).padding(.bottom, 8)
+            }
             if model.state.isFinished {
                 VStack(spacing: 8) {
                     Text(model.state.label).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
@@ -57,14 +81,44 @@ struct TerminalScreen: View {
                     }
                 }.padding(10)
             }
-            NativeTerminal(model: model, keyboardToggleRequest: keyboardToggleRequest, dualRoleCaps: dualRoleCaps, source: DualRoleKeySource(rawValue: dualRoleSource) ?? .capsLock)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ZStack {
+                NativeTerminal(model: model, keyboardToggleRequest: keyboardToggleRequest, dualRoleCaps: dualRoleCaps,
+                               source: DualRoleKeySource(rawValue: dualRoleSource) ?? .capsLock, inputActive: !preview.showing)
+                    .opacity(preview.showing ? 0 : 1)
+                    .allowsHitTesting(!preview.showing)
+                    .accessibilityHidden(preview.showing)
+                if preview.showing || preview.browser != nil {
+                    PreviewPane(model: preview).background(Color(white: 0.13))
+                        .opacity(preview.showing ? 1 : 0)
+                        .allowsHitTesting(preview.showing)
+                        .accessibilityHidden(!preview.showing)
+                }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         // Keep the whole host steady while UIKit sizes the terminal above the keyboard/accessory.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .ignoresSafeArea(.container, edges: .bottom)
         .background(Color(red: 0.13, green: 0.13, blue: 0.13))
         .preferredColorScheme(.dark)
+        .tint(LCARS.lavender)
+        .sheet(isPresented: $preview.editingPort) {
+            NavigationStack {
+                Form {
+                    Section("Mac development server") {
+                        TextField("Port", text: $preview.portText).keyboardType(.numberPad)
+                            .accessibilityIdentifier("preview.port")
+                        Toggle("Use HTTPS", isOn: $preview.useHTTPS)
+                        Text("Start the server in the terminal. Its localhost port will be reached through SSH.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    if let message = preview.message { Text(message).foregroundStyle(.orange) }
+                    Button("Open preview") { preview.open() }.disabled(!preview.connected)
+                        .accessibilityIdentifier("preview.open")
+                }
+                .navigationTitle("Website preview").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { preview.editingPort = false } } }
+            }.preferredColorScheme(.dark).tint(LCARS.lavender).presentationDetents([.medium])
+        }
         .alert(item: $model.trustRequest) { request in
             Alert(title: Text("Trust this Mac?"),
                   message: Text("\(model.connection.hostKeyAccount)\n\n\(request.fingerprint)\n\nCompare this fingerprint with the Mac before trusting it."),
@@ -80,10 +134,12 @@ private struct NativeTerminal: UIViewControllerRepresentable {
     let keyboardToggleRequest: Int
     let dualRoleCaps: Bool
     let source: DualRoleKeySource
+    var inputActive = true
     func makeUIViewController(context: Context) -> TerminalViewController { TerminalViewController(model: model) }
     func updateUIViewController(_ uiViewController: TerminalViewController, context: Context) {
         uiViewController.configureKeyboard(enabled: dualRoleCaps, source: source)
         uiViewController.updateKeyboardRequest(keyboardToggleRequest)
+        uiViewController.updateInputActive(inputActive)
     }
 }
 
@@ -93,6 +149,7 @@ final class TerminalViewController: UIViewController {
     private let model: TerminalSessionModel
     private let terminal = InteractiveTerminalView(frame: .zero)
     private var lastKeyboardToggleRequest = 0
+    private var inputActive = true
     private let controller = TerminalController { builder in
         builder.withFontSize(13)
         builder.withCustom("clipboard-read", "deny")
@@ -127,9 +184,17 @@ final class TerminalViewController: UIViewController {
         terminal.toggleKeyboardFromToolbar()
     }
 
+    func updateInputActive(_ active: Bool) {
+        guard inputActive != active else { return }
+        inputActive = active
+        terminal.isUserInteractionEnabled = active
+        if active { terminal.becomeFirstResponder() }
+        else { _ = terminal.resignFirstResponder(); view.endEditing(true) }
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        terminal.becomeFirstResponder()
+        if inputActive { terminal.becomeFirstResponder() }
         model.start() // The Metal surface is mounted before remote output can arrive.
     }
     override func viewWillLayoutSubviews() {

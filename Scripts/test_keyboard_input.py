@@ -17,7 +17,7 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, text=True, **kwargs)
 
 
-def run_probe(device, fixture_name="KeyboardAdapterProbe.swift", view_name="KeyboardAdapterProbeView", report_name="keyboard-probe.json", bundle="com.samesense.mini-term.keyboard-probe"):
+def run_probe(device, fixture_name="KeyboardAdapterProbe.swift", view_name="KeyboardAdapterProbeView", report_name="keyboard-probe.json", bundle="com.samesense.mini-term.keyboard-probe", capture_name=None):
     root = Path(__file__).resolve().parent.parent
     with tempfile.TemporaryDirectory(prefix="mini-term-keyboard-input-", dir="/private/tmp") as directory:
         probe = Path(directory)
@@ -50,6 +50,12 @@ def run_probe(device, fixture_name="KeyboardAdapterProbe.swift", view_name="Keyb
                 if report_path.exists():
                     report = json.loads(report_path.read_text())
                     print(json.dumps(report, indent=2))
+                    if capture_name:
+                        capture = Path(container) / "Documents" / capture_name
+                        if capture.exists():
+                            target = Path("/private/tmp") / capture_name
+                            shutil.copy2(capture, target)
+                            print("Workspace capture: " + str(target))
                     if report["failures"]:
                         sys.exit("Simulator probe failed")
                     return

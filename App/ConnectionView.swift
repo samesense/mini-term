@@ -423,7 +423,7 @@ struct ConnectionView: View {
 }
 
 
-private enum LCARS {
+enum LCARS {
     static let background = Color(red: 0.025, green: 0.028, blue: 0.037)
     static let field = Color(red: 0.073, green: 0.078, blue: 0.096)
     static let apricot = Color(red: 1, green: 0.70, blue: 0.43)

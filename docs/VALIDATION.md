@@ -1,5 +1,29 @@
 # Validation record and acceptance checklist
 
+## Website preview milestone
+
+Environment: Xcode 27.2, iPad mini (A20 Pro) simulator, iOS 27.2. Generated loopback credentials and synthetic servers only; no personal Mac connection or physical iPad was used for these new checks.
+
+- **PASS:** **60 tests in 6 suites**. Added fragmented SOCKS negotiation, authentication downgrade/wrong-credential rejection, CONNECT-only commands, domain/IPv4/IPv6 and port validation; encrypted forwarding via both listener types; 1 MiB opaque binary echo while terminal output is paused; denied-channel isolation; preview replacement/disconnect cleanup; unauthenticated rejection; invalid ports; bounded pending handshakes; and final remote output preserved when a shell closes while the renderer is paused.
+- **PASS:** **29 production WebKit/workspace simulator checks**, using `Scripts/test_preview.py`: page/fetch/image/iframe, WebSocket and SSE through encrypted SSH; external HTTPS hostname observed as an SSH destination; external main-frame navigation blocked; independent unproxied web view reaching the Safari forward; nonpersistent data store; stable terminal surface/SSH across view switches; fresh browser mounting after reopening; and manual reconnect restoring the applied port/protocol/selection rather than unsaved form edits.
+- **PASS:** a reachable direct listener at the same localhost address received **zero requests**, including when the proxy was closed and a fresh fetch was attempted. That fetch failed rather than falling back directly. This is observed behavior for the tested runtime and paths, not proof for every browser protocol or absence of speculative DNS.
+- **PASS:** unsigned physical-iPad target build; simulator fixture builds/launches with signing. Actual device installation and Safari app launch are separate checks.
+- **PASS:** existing **19 Ghostty keyboard checks** and **17 reconnect/diagnostics/model-lifetime checks** still pass after workspace changes.
+- **PASS:** the running preview workspace capture was inspected. Address ports render without locale grouping separators; terminal/preview selection, port controls, navigation and page content are visible.
+- No dependency pins, Ghostty engine/input hooks, Mac SSH configuration, or local signing team were changed. ATS uses local networking and a localhost HTTP exception, with no arbitrary-load exemption.
+
+Remaining acceptance:
+
+- [ ] Physical iPad mini: HTTP preview of a real Mac loopback-only server; portrait/landscape, keyboard form entry, terminal focus/held-modifier release, reload/back/port changes, Wi-Fi interruption, and reconnect.
+- [ ] Actual Safari app: loopback reachability, relative assets, foreground/background and multitasking lifetime. The sibling-web-view result does not establish this.
+- [ ] Real Vite and Next.js projects: hot reload, host/origin checks, redirects, cookies, and any alternate WebSocket ports, recording installed framework versions.
+- [ ] HTTPS/WSS with valid and invalid certificates, remote IPv6 targets, real Mac hostname resolution and server-side forwarding restrictions; no trust bypass.
+- [ ] Oldest supported iPadOS runtime and other current runtimes. API declarations alone do not establish identical behavior.
+- [ ] Instruments memory/fairness under sustained concurrent downloads plus heavy terminal output; repeated cancellation during pending channel opens.
+- [ ] Speculative DNS and unsupported browser protocols such as WebRTC/UDP, QUIC/WebTransport. Do not claim a general SSH-only browser sandbox.
+
+See [usage and limitations](PREVIEWS.md) and the [design/acceptance plan](PREVIEW_PLAN.md).
+
 ## Local evidence — 2026-11-01
 
 Environment: Apple Silicon macOS, Apple Swift 6.4 command-line tools. `xcodebuild -version` reports that the active developer directory is CommandLineTools and requires Xcode; no Xcode application or iOS SDK was found. No physical iPad or personal remote Mac was used.

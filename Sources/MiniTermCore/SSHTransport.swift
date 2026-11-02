@@ -38,6 +38,9 @@ public final class SSHTransport: @unchecked Sendable {
     private var deadline: Scheduled<Void>?
     private var started = false
     private var startupCommand: String?
+    private var preview: PreviewForwarder?
+    private var pausedOutput: [Data] = []
+    private var pausedOutputBytes = 0
 
     public init(callbacks: SSHCallbacks) {
         self.callbacks = callbacks
@@ -108,8 +111,9 @@ public final class SSHTransport: @unchecked Sendable {
         loop.execute { [weak self] in
             guard let self, !state.isFinished else { return }
             readPaused = paused
-            // Pause TCP as well as the child: SSH may otherwise continue filling its window/buffers.
-            if let parent { applyReadPressure(parent) }
+            if !paused { deliverPausedOutput() }
+            // A child's receive window bounds unread output. Keep the shared socket reading
+            // so a paused renderer cannot starve forwarded web connections or SSH control traffic.
             if let child { applyReadPressure(child) }
         }
     }
@@ -117,6 +121,34 @@ public final class SSHTransport: @unchecked Sendable {
     public func disconnect() {
         // Keep the transport alive until cleanup has run even if its presenting view is dismissed now.
         loop.execute { [self] in finish(.disconnected) }
+    }
+
+    /// Replaces the current preview. Only the existing, fully authenticated connection is used.
+    public func startPreview(remotePort: Int) -> EventLoopFuture<SSHPreviewTunnel> {
+        loop.flatSubmit { [self] in
+            guard state == .connected else { return loop.makeFailedFuture(PreviewError.disconnected) }
+            guard (1...65535).contains(remotePort) else { return loop.makeFailedFuture(PreviewError.invalidPort) }
+            preview?.stop()
+            let forwarder = PreviewForwarder(loop: loop, remotePort: remotePort) { [weak self] host, port, initialize in
+                guard let self else { return initialize.loop.makeFailedFuture(PreviewError.disconnected) }
+                return self.openForward(host: host, port: port, initialize: initialize)
+            }
+            preview = forwarder
+            return forwarder.start()
+        }
+    }
+
+    private func openForward(host: String, port: Int, initialize: ForwardInitializer) -> EventLoopFuture<any Channel> {
+        guard state == .connected, let parent else { return loop.makeFailedFuture(PreviewError.disconnected) }
+        do {
+            let ssh = try parent.pipeline.syncOperations.handler(type: NIOSSHHandler.self)
+            let promise = loop.makePromise(of: (any Channel).self)
+            let origin = try SocketAddress(ipAddress: "127.0.0.1", port: 0)
+            ssh.createChannel(promise, channelType: .directTCPIP(.init(targetHost: host, targetPort: port, originatorAddress: origin))) { channel, _ in
+                initialize.install(channel)
+            }
+            return promise.futureResult
+        } catch { return loop.makeFailedFuture(error) }
     }
 
     fileprivate func verifyingHost() {
@@ -159,6 +191,13 @@ public final class SSHTransport: @unchecked Sendable {
 
     fileprivate func receive(_ data: Data) {
         guard !state.isFinished else { return }
+        // Disabling child autoRead cannot revoke a read already in flight. Hold that bounded
+        // batch here instead of delivering output through a paused renderer callback.
+        if readPaused {
+            guard data.count <= 4 * 1024 * 1024 - pausedOutputBytes else { fail(TerminalError.outputOverflow); return }
+            pausedOutput.append(data); pausedOutputBytes += data.count
+            return
+        }
         callbacks.output(data)
     }
 
@@ -178,10 +217,20 @@ public final class SSHTransport: @unchecked Sendable {
     private func finish(_ final: ConnectionState) {
         guard !state.isFinished else { return }
         deadline?.cancel(); deadline = nil
+        // The parent keeps reading while the PTY is paused. Its final close can force a
+        // pending child read through; deliver those already-received bytes before ending.
+        deliverPausedOutput()
         transition(final)
         pending.removeAll()
+        preview?.stop(); preview = nil
         child?.close(promise: nil); child = nil
         parent?.close(promise: nil); parent = nil
+    }
+
+    private func deliverPausedOutput() {
+        let queued = pausedOutput
+        pausedOutput.removeAll(); pausedOutputBytes = 0
+        for data in queued { callbacks.output(data) }
     }
 
     private func flushInput() {

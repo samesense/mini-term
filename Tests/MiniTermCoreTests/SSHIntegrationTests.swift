@@ -34,8 +34,9 @@ private final class EchoShell: ChannelInboundHandler {
     typealias InboundIn = SSHChannelData
     let observer: @Sendable (ServerEvent) -> Void
     let rejectPTY: Bool
-    init(rejectPTY: Bool, observer: @escaping @Sendable (ServerEvent) -> Void) {
-        self.rejectPTY = rejectPTY; self.observer = observer
+    let echoThenExit: Bool
+    init(rejectPTY: Bool, echoThenExit: Bool = false, observer: @escaping @Sendable (ServerEvent) -> Void) {
+        self.rejectPTY = rejectPTY; self.echoThenExit = echoThenExit; self.observer = observer
     }
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
@@ -57,13 +58,17 @@ private final class EchoShell: ChannelInboundHandler {
         }
     }
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        context.channel.writeAndFlush(unwrapInboundIn(data), promise: nil)
+        let channel = context.channel
+        let write = channel.writeAndFlush(unwrapInboundIn(data))
+        if echoThenExit { write.whenComplete { _ in channel.close(promise: nil) } }
     }
     func errorCaught(context: ChannelHandlerContext, error: Error) { context.close(promise: nil) }
 }
 
 struct SSHIntegrationTests {
     private func server(group: MultiThreadedEventLoopGroup, clientSeed: Data, rejectPTY: Bool = false,
+                        echoThenExit: Bool = false,
+                        forward: (host: String, port: Int)? = nil,
                         observer: @escaping @Sendable (ServerEvent) -> Void = { _ in }) async throws -> (any Channel, String) {
         let host = NIOSSHPrivateKey(ed25519Key: .init())
         let clientKey = try NIOSSHPrivateKey(ed25519Key: Curve25519.Signing.PrivateKey(rawRepresentation: clientSeed)).publicKey
@@ -73,9 +78,15 @@ struct SSHIntegrationTests {
                     role: .server(.init(hostKeys: [host], userAuthDelegate: PublicKeyServerAuth(acceptedKey: clientKey))),
                     allocator: channel.allocator,
                     inboundChildChannelInitializer: { child, type in
+                        if case .directTCPIP(let target) = type, let forward,
+                           target.targetHost == forward.host, target.targetPort == forward.port {
+                            return child.setOption(ChannelOptions.allowRemoteHalfClosure, value: true).flatMap {
+                                child.eventLoop.makeCompletedFuture { try child.pipeline.syncOperations.addHandler(ForwardEcho()) }
+                            }
+                        }
                         guard type == .session else { return child.eventLoop.makeFailedFuture(TerminalError.requestRejected) }
                         return child.eventLoop.makeCompletedFuture {
-                            try child.pipeline.syncOperations.addHandler(EchoShell(rejectPTY: rejectPTY, observer: observer))
+                            try child.pipeline.syncOperations.addHandler(EchoShell(rejectPTY: rejectPTY, echoThenExit: echoThenExit, observer: observer))
                         }
                     }
                 ))
@@ -252,4 +263,189 @@ private final class TestSignal: Sendable {
 
 private func fulfillment(of signals: [TestSignal], timeout: Double) async throws {
     for signal in signals { try await signal.wait(timeout: timeout) }
+}
+
+private final class ForwardEcho: ChannelInboundHandler {
+    typealias InboundIn = SSHChannelData
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) { context.writeAndFlush(data, promise: nil) }
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        if let event = event as? ChannelEvent, event == .inputClosed { context.close(mode: .output, promise: nil) }
+        else { context.fireUserInboundEventTriggered(event) }
+    }
+}
+
+private final class PreviewTestReader: ChannelInboundHandler, @unchecked Sendable {
+    typealias InboundIn = ByteBuffer
+    private let bytes = Locked(Data())
+    private let ended = Locked(false)
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        let buffer = unwrapInboundIn(data)
+        bytes.withValue { $0.append(contentsOf: buffer.readableBytesView) }
+    }
+    func channelInactive(context: ChannelHandlerContext) { ended.withValue { $0 = true }; context.fireChannelInactive() }
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        if let event = event as? ChannelEvent, event == .inputClosed { context.close(promise: nil) }
+        else { context.fireUserInboundEventTriggered(event) }
+    }
+    func take(_ count: Int) async throws -> Data {
+        let deadline = ContinuousClock.now + .seconds(8)
+        while true {
+            if let data = bytes.withValue({ bytes -> Data? in
+                guard bytes.count >= count else { return nil }
+                let data = Data(Array(bytes.prefix(count))); bytes.removeFirst(count); return data
+            }) { return data }
+            if ended.withValue({ $0 }) || ContinuousClock.now >= deadline { throw TerminalError.timedOut }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+    }
+}
+
+extension SSHIntegrationTests {
+    @Test func remoteExitPreservesFinalOutputWhileRendererIsPaused() async throws {
+        let seed = SSHIdentity.generateSeed()
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { group.shutdownGracefully { _ in } }
+        let (server, hostKey) = try await server(group: group, clientSeed: seed, echoThenExit: true)
+        defer { server.close(promise: nil) }
+        let connected = TestSignal("shell ready")
+        let ended = TestSignal("remote exit")
+        let output = Locked(Data())
+        let transport = SSHTransport(callbacks: .init(state: { state in
+            if state == .connected { connected.fulfill() }
+            if state.isFinished { ended.fulfill() }
+        }, output: { data in output.withValue { $0.append(data) } }))
+        defer { transport.disconnect() }
+        transport.connect(to: try SSHConnection(host: "127.0.0.1", username: "tester", port: server.localAddress!.port!), seed: seed) { key, completion in
+            completion(key == hostKey ? .success(()) : .failure(TerminalError.hostKeyMismatch))
+        }
+        try await connected.wait(timeout: 8)
+        transport.setOutputPaused(true)
+        let final = Data("final output before remote exit\r\n".utf8)
+        transport.send(final)
+        try await ended.wait(timeout: 8)
+        #expect(output.withValue { $0 } == final)
+    }
+
+    private func connectedPreview(group: MultiThreadedEventLoopGroup) async throws -> (SSHTransport, any Channel) {
+        let seed = SSHIdentity.generateSeed()
+        let (server, hostKey) = try await server(group: group, clientSeed: seed, forward: ("localhost", 3000))
+        let connected = TestSignal("preview SSH authenticated")
+        let transport = SSHTransport(callbacks: .init(state: { state in
+            if state == .connected { connected.fulfill() }
+        }, output: { _ in }))
+        transport.connect(to: try SSHConnection(host: "127.0.0.1", username: "tester", port: server.localAddress!.port!), seed: seed) { key, completion in
+            completion(key == hostKey ? .success(()) : .failure(TerminalError.hostKeyMismatch))
+        }
+        try await connected.wait(timeout: 8)
+        return (transport, server)
+    }
+
+    private func client(port: Int, group: MultiThreadedEventLoopGroup) async throws -> (any Channel, PreviewTestReader) {
+        let reader = PreviewTestReader()
+        let channel = try await ClientBootstrap(group: group)
+            .channelOption(ChannelOptions.allowRemoteHalfClosure, value: true)
+            .channelInitializer { channel in channel.pipeline.addHandler(reader) }
+            .connect(host: "127.0.0.1", port: port).get()
+        return (channel, reader)
+    }
+
+    private func socks(tunnel: SSHPreviewTunnel, group: MultiThreadedEventLoopGroup, port: Int = 3000) async throws -> (any Channel, PreviewTestReader) {
+        let (channel, reader) = try await client(port: tunnel.proxyPort, group: group)
+        try await channel.writeAndFlush(ByteBuffer(bytes: [5, 1, 2])).get()
+        #expect(try await reader.take(2) == Data([5, 2]))
+        let user = Array(tunnel.username.utf8), password = Array(tunnel.password.utf8)
+        try await channel.writeAndFlush(ByteBuffer(bytes: [1, UInt8(user.count)] + user + [UInt8(password.count)] + password)).get()
+        #expect(try await reader.take(2) == Data([1, 0]))
+        try await channel.writeAndFlush(ByteBuffer(bytes: [5, 1, 0, 3, 9] + Array("localhost".utf8) + [UInt8(port >> 8), UInt8(port & 255)])).get()
+        let reply = try await reader.take(10)
+        #expect(reply[1] == (port == 3000 ? 0 : 5))
+        return (channel, reader)
+    }
+
+    @Test func previewSOCKSAndSafariShareSSHAndSurvivePausedTerminal() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { group.shutdownGracefully { _ in } }
+        let (transport, server) = try await connectedPreview(group: group)
+        defer { transport.disconnect(); server.close(promise: nil) }
+        let tunnel = try await transport.startPreview(remotePort: 3000).get()
+        #expect(tunnel.proxyPort != tunnel.safariPort)
+        transport.setOutputPaused(true)
+        let (socksChannel, socksReader) = try await socks(tunnel: tunnel, group: group)
+        let (safari, safariReader) = try await client(port: tunnel.safariPort, group: group)
+        defer { socksChannel.close(promise: nil); safari.close(promise: nil) }
+        let payload = Data((0..<(1024 * 1024)).map { UInt8($0 % 251) })
+        try await socksChannel.writeAndFlush(ByteBuffer(bytes: payload)).get()
+        #expect(try await socksReader.take(payload.count) == payload)
+        let request = Data("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n".utf8)
+        try await safari.writeAndFlush(ByteBuffer(bytes: request)).get()
+        #expect(try await safariReader.take(request.count) == request)
+        // A denied destination affects only that forwarded stream.
+        let (denied, _) = try await socks(tunnel: tunnel, group: group, port: 3001)
+        denied.close(promise: nil)
+        try await socksChannel.writeAndFlush(ByteBuffer(bytes: [42])).get()
+        #expect(try await socksReader.take(1) == Data([42]))
+        // Half-close after a request preserves its final response bytes.
+        try await socksChannel.close(mode: .output).get()
+        try await tunnel.close().get()
+        transport.setOutputPaused(false)
+        // Closing preview leaves SSH authenticated and allows a new preview.
+        let replacement = try await transport.startPreview(remotePort: 3000).get()
+        try await replacement.close().get()
+    }
+
+    @Test func previewRejectsBeforeAuthenticationAndInvalidPorts() async throws {
+        let transport = SSHTransport(callbacks: .init(state: { _ in }, output: { _ in }))
+        do { _ = try await transport.startPreview(remotePort: 3000).get(); Issue.record("Unauthenticated forwarding") }
+        catch { #expect(error as? PreviewError == .disconnected) }
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { group.shutdownGracefully { _ in } }
+        let (connected, server) = try await connectedPreview(group: group)
+        defer { connected.disconnect(); server.close(promise: nil) }
+        for port in [0, -1, 65536, Int.max] {
+            do { _ = try await connected.startPreview(remotePort: port).get(); Issue.record("Invalid port accepted") }
+            catch { #expect(error as? PreviewError == .invalidPort) }
+        }
+    }
+
+    @Test func previewReplacementAndDisconnectCloseListenersAndStreams() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { group.shutdownGracefully { _ in } }
+        let (transport, server) = try await connectedPreview(group: group)
+        defer { transport.disconnect(); server.close(promise: nil) }
+        let first = try await transport.startPreview(remotePort: 3000).get()
+        let (channel, reader) = try await client(port: first.safariPort, group: group)
+        try await channel.writeAndFlush(ByteBuffer(bytes: [23])).get()
+        #expect(try await reader.take(1) == Data([23]))
+        let second = try await transport.startPreview(remotePort: 3000).get()
+        try await first.close().get()
+        try await channel.closeFuture.get()
+        do { let (unexpected, _) = try await client(port: first.proxyPort, group: group); unexpected.close(promise: nil); Issue.record("Old listener remained open") }
+        catch {}
+        transport.disconnect()
+        try await second.close().get()
+        do { let (unexpected, _) = try await client(port: second.safariPort, group: group); unexpected.close(promise: nil); Issue.record("Disconnected listener remained open") }
+        catch {}
+    }
+
+    @Test func previewRejectsBadCredentialsAndBoundsPendingHandshakes() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { group.shutdownGracefully { _ in } }
+        let (transport, server) = try await connectedPreview(group: group)
+        defer { transport.disconnect(); server.close(promise: nil) }
+        let tunnel = try await transport.startPreview(remotePort: 3000).get()
+        let (bad, reader) = try await client(port: tunnel.proxyPort, group: group)
+        try await bad.writeAndFlush(ByteBuffer(bytes: [5, 1, 2, 1, 1, 120, 1, 121])).get()
+        #expect(try await reader.take(4) == Data([5, 2, 1, 1]))
+        try await bad.closeFuture.get()
+        var pending: [any Channel] = []
+        defer { for channel in pending { channel.close(promise: nil) } }
+        for _ in 0..<PreviewForwarder.maximumStreams {
+            let (channel, _) = try await client(port: tunnel.proxyPort, group: group)
+            pending.append(channel)
+        }
+        let (overLimit, _) = try await client(port: tunnel.proxyPort, group: group)
+        try await overLimit.closeFuture.get()
+        try await tunnel.close().get()
+        for channel in pending { try await channel.closeFuture.get() }
+    }
 }

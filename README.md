@@ -10,6 +10,7 @@ A native iPad SSH terminal powered by Ghostty. Connect to your Mac, resume a tmu
 - Persistent remote sessions through tmux, with an optional tap-to-switch session menu.
 - Named connections, favorites, and optional history sharing through an iCloud Drive folder.
 - One-tap reconnect to the same destination and privacy-safe diagnostic copying.
+- In-app website previews through SSH, with an experimental Safari port forward.
 - Ed25519 authentication with a device-only Keychain identity and explicit host verification.
 - Optional dual-role Caps Lock: tap for Escape, hold with another key for Control, subject to iPadOS event delivery.
 
@@ -92,11 +93,17 @@ Enabled by default in **Settings → Hardware keyboard**. Release Caps alone for
 
 **Physical Caps press/release delivery varies with iPadOS and keyboard setup.** If it fails or still capitalizes, use the system-remapped Control fallback described in [keyboard setup and limitations](docs/KEYBOARD.md). The app cannot guarantee system-wide Caps suppression. Physical USB/Bluetooth compatibility remains unverified.
 
+### Website previews
+
+Start your development server on the Mac, tap the terminal's **globe**, enter its port, and choose **Open preview**. Switch between Terminal and Preview without disconnecting; page requests and tested WebSocket/SSE traffic travel through SSH. **Port** changes the server settings. Safari support is experimental and depends on MiniTerm keeping the tunnel alive. [Setup, testing scope, and limitations](docs/PREVIEWS.md).
+
 ## Current limits
 
 One active SSH connection; use Reconnect after it ends. There are no tabs, file transfers, imported private keys, SSH agents, or automatic reconnect yet. iPadOS can suspend networking in the background; tmux provides remote process persistence.
 
 Physical iPad SSH and touch session switching have been user-tested. Physical iCloud synchronization and dual-role keyboard compatibility still need device testing. Exact results and remaining checks live in [validation](docs/VALIDATION.md).
+
+Website previews have simulator coverage; physical iPad/Safari and real development-framework hot reload remain unverified. The embedded preview is scoped to trusted development sites and tested TCP web traffic, not a VPN.
 
 ## Development
 

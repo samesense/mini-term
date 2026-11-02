@@ -2,6 +2,8 @@
 
 Open `MiniTerm.xcodeproj` to build the iPad app. The root Swift package contains `MiniTermCore` and its unit/integration tests; it can be built independently on macOS without the Ghostty renderer or an SSH daemon.
 
+Website previews: [usage and current limitations](PREVIEWS.md), plus the [design and remaining verification gates](PREVIEW_PLAN.md).
+
 ## Toolchain and builds
 
 Use full Xcode with iOS platform support and Swift 6.2+. If the shell selects Command Line Tools, select Xcode for that shell:
@@ -58,9 +60,12 @@ xcrun simctl list devices booted
 python3 Scripts/test_keyboard_layout.py SIMULATOR_UDID
 python3 Scripts/test_keyboard_input.py SIMULATOR_UDID
 python3 Scripts/test_session_features.py SIMULATOR_UDID
+python3 Scripts/test_preview.py SIMULATOR_UDID
 ```
 
 The layout probe exercises the production constraints during keyboard/container changes. The input probe mounts a real Ghostty surface but supplies artificial UIKit key/press objects; it does not establish physical Caps Lock delivery. The keyboard probes install isolated test apps, open no SSH connections, and uninstall afterward. The session probe uses real app models against a closed simulator loopback port to verify reconnect isolation, attempt counting, diagnostics redaction, and old-model cleanup; it never contacts a remote Mac. See [keyboard findings](KEYBOARD.md) and [validation](VALIDATION.md) for scope and hardware acceptance.
+
+The preview probe mounts production WebKit/Ghostty workspace views against generated loopback SSH/HTTP/WebSocket/SSE fixtures. A reachable direct listener detects localhost proxy bypass/fallback. It also checks navigation restrictions, browser replacement, workspace switching, and manual reconnect restoration. It uses only fixture credentials and an ephemeral fixture host-trust record, deleted after the check. It never contacts a personal Mac and does not automate the Safari app. A workspace capture is copied to `/private/tmp/preview-workspace.png` before uninstalling the isolated app.
 
 [GitHub Actions](https://github.com/samesense/mini-term/actions/workflows/build.yml) runs core tests, the tmux interaction probe, deterministic project generation, dependency resolution, and unsigned simulator/device builds. It does not run physical iPad or iCloud-provider checks.
 

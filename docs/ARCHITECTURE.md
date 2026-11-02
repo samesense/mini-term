@@ -26,7 +26,7 @@ The app imports `MiniTermGhosttyTerminal`, a checked-in copy of the pinned Swift
 
 - `InMemoryTerminalSession(write:resize:)`: raw terminal-generated keyboard/protocol bytes → `SSHTransport.send`; viewport callback → `SSHTransport.resize`.
 - `session.receive(Data)`: SSH stdout/stderr → Ghostty parser → Metal renderer. Never decode and re-encode chunks as strings; UTF-8 and escape sequences can span packets.
-- `session.setOutputBacklogHandler(highWater:lowWater:_:)`: pauses/resumes both TCP and SSH child auto-read at 1 MiB/256 KiB of unparsed output. Already received/in-flight packets can overshoot the threshold. This avoids an indefinitely growing output queue when the renderer/parser lags.
+- `session.setOutputBacklogHandler(highWater:lowWater:_:)`: pauses/resumes PTY child auto-read at 1 MiB/256 KiB of unparsed output. An already-issued read is retained in a bounded 4 MiB transport queue until resume. The parent TCP channel continues reading so forwarded web channels and SSH control traffic make progress; the pinned SSH child's receive window bounds unread data.
 - `TerminalView.fitToSize()`: recomputes dimensions after layout changes. A keyboard-layout-guide constraint plus the full keyboard frame (including the accessory bar) keeps the last terminal rows visible.
 - `UITerminalView`: `UITextInput`, hardware keyboard handling, IME, key repeat, touch selection, local history scrolling, copy/paste, font zoom and accessory bar are supplied by the package. We do not encode keystrokes ourselves.
 
@@ -87,3 +87,11 @@ Reconnect creates a new `TerminalSessionModel`, bridge, in-memory terminal sessi
 Transport failures supply an allowlisted `ConnectionFailure` separately from the human-readable UI error. Diagnostic reports serialize only phases, categories/codes, versions, and modifier edge counts; arbitrary error messages and SSH/terminal data are never inputs to the report.
 
 Optional name/favorite annotations extend the existing history schema. Their own timestamp/operation ID merges independently from connection recency, preserving customizations when older clients update a visit. Deletions carry cleared metadata revisions, and explicit clearing/unfavoriting is a real revision. Favorites are retained separately from the 30 ordinary recent entries.
+
+## Website preview workspace
+
+`TerminalWorkspace` keeps the native terminal and active browser mounted while switching visibility/input focus. Dismissal disconnects the workspace; switching does not. `PreviewModel` owns the browser and binds asynchronous startup to a request generation. A fresh reconnect model restores the local port/protocol and preview selection, creating a fresh route/browser only after SSH is connected.
+
+`SSHTransport.startPreview` creates two loopback listeners on its existing event loop: an authenticated SOCKS5 endpoint for a nonpersistent `WKWebsiteDataStore`, and a plain fixed-destination endpoint for experimental Safari use. Both use independent NIOSSH `directTCPIP` children of the already authenticated SSH parent. The incremental SOCKS parser supports username/password authentication and CONNECT with domain/IPv4/IPv6 destinations; it rejects downgrade, BIND, UDP association and invalid ports. Relays use manual reads, bounded write accounting, half-closes, per-stream deadlines and isolated failure cleanup. No new package dependency is required.
+
+WebKit's per-store proxy has direct failover disabled; page navigation is limited to the selected localhost origin/port. Normal TLS validation remains enabled. ATS allows local networking and insecure HTTP specifically for localhost, with no arbitrary web-load exemption. Safari has a distinct ephemeral local URL and the normal external-resource/background limitations described in [preview documentation](PREVIEWS.md). The preview is verified for specific TCP web paths, not every protocol WebKit can initiate.

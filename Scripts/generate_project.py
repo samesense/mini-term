@@ -53,6 +53,7 @@ target_settings = {
     'PRODUCT_BUNDLE_IDENTIFIER': 'com.samesense.mini-term', 'PRODUCT_NAME': 'MiniTerm',
     'CODE_SIGN_STYLE': 'Automatic', 'DEVELOPMENT_TEAM': '""', 'TARGETED_DEVICE_FAMILY': '2',
     'GENERATE_INFOPLIST_FILE': 'YES', 'INFOPLIST_KEY_CFBundleDisplayName': '"Mini Term"',
+    'INFOPLIST_FILE': 'App/Info.plist',
     'INFOPLIST_KEY_LSApplicationCategoryType': '"public.app-category.developer-tools"',
     'INFOPLIST_KEY_NSLocalNetworkUsageDescription': '"Connect to your Mac over SSH on the local network."',
     'INFOPLIST_KEY_UILaunchScreen_Generation': 'YES',

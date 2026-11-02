@@ -75,7 +75,7 @@ public enum ConnectionState: Equatable, Sendable {
 public enum TerminalError: LocalizedError, Sendable {
     case invalidSessionName
     case invalidConnection, authentication, hostKeyRejected, hostKeyMismatch
-    case requestRejected, timedOut, inputOverflow, invalidHostKey, cancelled
+    case requestRejected, timedOut, inputOverflow, outputOverflow, invalidHostKey, cancelled
     case keychain(Int32)
 
     public var errorDescription: String? {
@@ -88,6 +88,7 @@ public enum TerminalError: LocalizedError, Sendable {
         case .requestRejected: "The SSH server rejected the PTY or interactive shell request."
         case .timedOut: "The SSH connection timed out. Check the address, Remote Login, network, and Tailscale connection."
         case .inputOverflow: "Input exceeded the 1 MiB pending limit. Connection closed to avoid losing or reordering input."
+        case .outputOverflow: "Paused terminal output exceeded its buffer limit. Connection closed."
         case .invalidHostKey: "The SSH host public key could not be decoded."
         case .cancelled: "Connection cancelled."
         case .keychain(let status): "Keychain operation failed (\(status)). Unlock the iPad and try again."

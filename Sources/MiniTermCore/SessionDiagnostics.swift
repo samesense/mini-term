@@ -6,7 +6,7 @@ import NIOPosix
 public struct ConnectionFailure: Equatable, Sendable {
     public enum Kind: String, Sendable {
         case authentication, hostKeyRejected, hostKeyChanged, invalidHostKey, serverRequest
-        case timeout, inputOverflow, cancelled, keychain, configuration, network, transport
+        case timeout, inputOverflow, outputOverflow, cancelled, keychain, configuration, network, transport
     }
     public let kind: Kind
     public let systemCode: Int?
@@ -23,6 +23,7 @@ public struct ConnectionFailure: Equatable, Sendable {
             case .requestRejected: kind = .serverRequest
             case .timedOut: kind = .timeout
             case .inputOverflow: kind = .inputOverflow
+            case .outputOverflow: kind = .outputOverflow
             case .cancelled: kind = .cancelled
             case .keychain(let status): kind = .keychain; code = Int(status)
             case .invalidConnection, .invalidSessionName: kind = .configuration
