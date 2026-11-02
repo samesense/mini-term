@@ -16,6 +16,24 @@
 +                // A host-added Control is not a UIKit command; its repeats
 +                // still belong to this physical-key timer.
 +                isKeyCommand: modifierFlags == key.modifierFlags && keyCommandInput(for: key, filteredModifierFlags: modifierFlags) != nil,
+--- a/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+Lifecycle.swift
++++ b/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+Lifecycle.swift
+@@ -286,9 +286,6 @@
+-        override open func traitCollectionDidChange(
+-            _ previousTraitCollection: UITraitCollection?,
+-        ) {
+-            super.traitCollectionDidChange(previousTraitCollection)
+-            updateDisplayScale()
+-            if traitCollection.hasDifferentColorAppearance(
+-                comparedTo: previousTraitCollection,
+-            ) {
+-                updateColorScheme()
++        func setupTraitObservers() {
++            registerForTraitChanges([UITraitDisplayScale.self]) { (view: UITerminalView, _: UITraitCollection) in
++                view.updateDisplayScale()
++            }
++            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: UITerminalView, _: UITraitCollection) in
++                view.updateColorScheme()
 --- a/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+PublicInput.swift
 +++ b/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+PublicInput.swift
 @@ -12,0 +13,7 @@
@@ -26,6 +44,52 @@
 +            return press.withKeyEvent(action: action.ghosttyAction) { sendInputKeyEvent($0) }
 +        }
 +
+--- a/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+TouchMenu.swift
++++ b/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+TouchMenu.swift
+@@ -11,4 +11 @@
+-            if #available(iOS 16.0, *) {
+-                return touchSelection.menuVisible
+-            }
+-            return UIMenuController.shared.isMenuVisible
++            touchSelection.menuVisible
+@@ -28,2 +24,0 @@
+-            } else {
+-                presentLegacyTouchMenu(at: point)
+@@ -73,2 +67,0 @@
+-            } else {
+-                presentLegacyTouchMenu(at: point)
+@@ -88,22 +80,0 @@
+-        private func presentLegacyTouchMenu(at point: CGPoint) {
+-            // UIMenuController requires a first responder. A plain view routes
+-            // actions through its superview without opening the terminal keyboard.
+-            if !isFirstResponder {
+-                if touchSelection.menuResponder == nil {
+-                    let responder = TerminalTouchMenuResponder(frame: .zero)
+-                    addSubview(responder)
+-                    touchSelection.menuResponder = responder
+-                }
+-                touchSelection.menuResponder?.becomeFirstResponder()
+-            }
+-            let menu = UIMenuController.shared
+-            menu.menuItems = nil
+-            menu.showMenu(from: self, rect: touchMenuTargetRect(at: point))
+-            menu.update()
+-        }
+-    }
+-
+-    private final class TerminalTouchMenuResponder: UIView {
+-        override var canBecomeFirstResponder: Bool {
+-            true
+-        }
+--- a/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+TouchSelection.swift
++++ b/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+TouchSelection.swift
+@@ -157,5 +157 @@
+-            if #available(iOS 16.0, *), touchSelection.enabled {
+-                selectionEditMenuInteraction.dismissMenu()
+-            } else if touchSelection.enabled {
+-                UIMenuController.shared.hideMenu()
+-            }
++            if touchSelection.enabled { selectionEditMenuInteraction.dismissMenu() }
 --- a/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView.swift
 +++ b/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView.swift
 @@ -14,0 +15,12 @@
@@ -41,6 +105,8 @@
 +        }
 +        public func cancelHardwareKeyRepeat() { stopKeyRepeat() }
 +
+@@ -232,0 +245 @@
++            setupTraitObservers()
 --- a/Sources/GhosttyTerminal/Surface/TerminalKeyPress.swift
 +++ b/Sources/GhosttyTerminal/Surface/TerminalKeyPress.swift
 @@ -6,0 +7,11 @@
@@ -55,3 +121,8 @@
 +        }
 +    }
 +}
+--- a/Sources/GhosttyTerminal/Surface/TerminalSurfaceView.swift
++++ b/Sources/GhosttyTerminal/Surface/TerminalSurfaceView.swift
+@@ -32 +32 @@
+-            .onChange(of: colorScheme) { newScheme in
++            .onChange(of: colorScheme) { _, newScheme in

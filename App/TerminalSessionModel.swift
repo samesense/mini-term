@@ -52,15 +52,17 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
     @Published private(set) var state: ConnectionState = .idle
     @Published var trustRequest: HostTrustRequest?
     var onConnected: (() -> Void)?
+    private(set) var diagnostics: SessionDiagnostics
     private let seed: Data
     private let keychain = KeychainStore()
     private let bridge: TerminalBridge
     private var transport: SSHTransport?
     private var pendingTrust: HostTrustRequest?
 
-    init(connection: SSHConnection, seed: Data) {
+    init(connection: SSHConnection, seed: Data, diagnostics: SessionDiagnostics? = nil) {
         self.connection = connection
         self.seed = seed
+        self.diagnostics = diagnostics ?? SessionDiagnostics(usesTmux: connection.tmuxSession != nil)
         let bridge = TerminalBridge()
         self.bridge = bridge
         terminalSession = InMemoryTerminalSession(write: { bridge.send($0) }, resize: { bridge.resize($0) })
@@ -69,11 +71,16 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
 
     func start() {
         guard transport == nil else { return }
+        diagnostics.beginAttempt()
         let session = terminalSession
         let transport = SSHTransport(callbacks: .init(state: { [weak self] state in
             DispatchQueue.main.async { self?.didChangeState(state) }
         }, output: { data in
             session.receive(data) // Ghostty parses on its serial output queue, never the main thread.
+        }, failure: { [weak self] failure in
+            DispatchQueue.main.async {
+                self?.diagnostics.record(.failed(""), failure: failure)
+            }
         }))
         self.transport = transport
         bridge.attach(transport)
@@ -83,6 +90,16 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
                 self.verify(key: key, completion: completion)
             }
         }
+    }
+
+    /// A new model owns a new socket, byte queues, bridge and terminal surface.
+    /// Old callbacks can only reach the retired model, never the next attempt.
+    func reconnectSession() -> TerminalSessionModel? {
+        guard state.isFinished else { return nil }
+        disconnect()
+        let next = TerminalSessionModel(connection: connection, seed: seed, diagnostics: diagnostics)
+        next.onConnected = onConnected
+        return next
     }
 
     func disconnect() {
@@ -127,6 +144,7 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
 
     private func didChangeState(_ state: ConnectionState) {
         self.state = state
+        diagnostics.record(state)
         if state == .connected { onConnected?() }
         if state.isFinished { bridge.detach() }
         if state.isFinished, let request = pendingTrust {
@@ -134,5 +152,18 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
             trustRequest = nil
             request.completion(.failure(TerminalError.cancelled))
         }
+    }
+}
+
+@MainActor
+enum AppDiagnostics {
+    static func text(_ diagnostics: SessionDiagnostics) -> String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let version = info["CFBundleShortVersionString"] as? String ?? "unknown"
+        let build = info["CFBundleVersion"] as? String ?? "unknown"
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        let report = diagnostics.report(appVersion: "\(version) (\(build))", systemVersion: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)")
+        let keyboard = KeyboardEventDiagnostics.shared
+        return report + "\n\nKeyboard event counts (down/up)\nUIKit Caps: \(keyboard.capsDown)/\(keyboard.capsUp)\nUIKit left Control: \(keyboard.controlDown)/\(keyboard.controlUp)\nGameController Caps: \(keyboard.gcDown)/\(keyboard.gcUp)"
     }
 }

@@ -7,10 +7,13 @@ import NIOSSH
 public struct SSHCallbacks: Sendable {
     public var state: @Sendable (ConnectionState) -> Void
     public var output: @Sendable (Data) -> Void
+    public var failure: @Sendable (ConnectionFailure) -> Void
     public init(state: @escaping @Sendable (ConnectionState) -> Void,
-                output: @escaping @Sendable (Data) -> Void) {
+                output: @escaping @Sendable (Data) -> Void,
+                failure: @escaping @Sendable (ConnectionFailure) -> Void = { _ in }) {
         self.state = state
         self.output = output
+        self.failure = failure
     }
 }
 
@@ -160,7 +163,11 @@ public final class SSHTransport: @unchecked Sendable {
     }
 
     fileprivate func closed() { finish(.disconnected) }
-    fileprivate func fail(_ error: Error) { finish(.failed(error.localizedDescription)) }
+    fileprivate func fail(_ error: Error) {
+        guard !state.isFinished else { return }
+        callbacks.failure(ConnectionFailure(error))
+        finish(.failed(error.localizedDescription))
+    }
 
     private func transition(_ next: ConnectionState) {
         guard !state.isFinished, state != next else { return }

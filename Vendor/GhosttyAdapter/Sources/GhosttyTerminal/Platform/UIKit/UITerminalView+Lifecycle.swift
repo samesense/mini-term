@@ -283,15 +283,12 @@
             core.fitToSize()
         }
 
-        override open func traitCollectionDidChange(
-            _ previousTraitCollection: UITraitCollection?,
-        ) {
-            super.traitCollectionDidChange(previousTraitCollection)
-            updateDisplayScale()
-            if traitCollection.hasDifferentColorAppearance(
-                comparedTo: previousTraitCollection,
-            ) {
-                updateColorScheme()
+        func setupTraitObservers() {
+            registerForTraitChanges([UITraitDisplayScale.self]) { (view: UITerminalView, _: UITraitCollection) in
+                view.updateDisplayScale()
+            }
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: UITerminalView, _: UITraitCollection) in
+                view.updateColorScheme()
             }
         }
 

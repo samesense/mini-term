@@ -8,10 +8,7 @@
 
     extension UITerminalView {
         var isTouchMenuVisible: Bool {
-            if #available(iOS 16.0, *) {
-                return touchSelection.menuVisible
-            }
-            return UIMenuController.shared.isMenuVisible
+            touchSelection.menuVisible
         }
 
         func presentTouchMenu(at point: CGPoint) {
@@ -25,8 +22,6 @@
                         sourcePoint: point,
                     ),
                 )
-            } else {
-                presentLegacyTouchMenu(at: point)
             }
         }
 
@@ -70,8 +65,6 @@
                         ),
                     ),
                 )
-            } else {
-                presentLegacyTouchMenu(at: point)
             }
         }
 
@@ -85,28 +78,6 @@
             return CGRect(origin: point, size: CGSize(width: 1, height: 1))
         }
 
-        private func presentLegacyTouchMenu(at point: CGPoint) {
-            // UIMenuController requires a first responder. A plain view routes
-            // actions through its superview without opening the terminal keyboard.
-            if !isFirstResponder {
-                if touchSelection.menuResponder == nil {
-                    let responder = TerminalTouchMenuResponder(frame: .zero)
-                    addSubview(responder)
-                    touchSelection.menuResponder = responder
-                }
-                touchSelection.menuResponder?.becomeFirstResponder()
-            }
-            let menu = UIMenuController.shared
-            menu.menuItems = nil
-            menu.showMenu(from: self, rect: touchMenuTargetRect(at: point))
-            menu.update()
-        }
-    }
-
-    private final class TerminalTouchMenuResponder: UIView {
-        override var canBecomeFirstResponder: Bool {
-            true
-        }
     }
 
     @available(iOS 16.0, *)

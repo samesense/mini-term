@@ -18,7 +18,7 @@ Both resolved files pin transitive versions/revisions, including DisplayLink `3.
 
 ## Host keyboard adapter
 
-The app imports `MiniTermGhosttyTerminal`, a checked-in copy of the pinned Swift wrapper under `Vendor/GhosttyAdapter`. Five upstream source files have narrow policy/phase hooks for dual-role keyboard input; [provenance and patch](../Vendor/GhosttyAdapter/README.md) document them. It still links the exact upstream `GhosttyKit` engine binary and uses the wrapper’s HID translation, text handling, repeat and input funnel. `MiniTermCore.DualRoleKeyboard` contains only the portable state machine. [Keyboard API findings](KEYBOARD.md) separate simulated tests from unverified physical event delivery.
+The app imports `MiniTermGhosttyTerminal`, a checked-in copy of the pinned Swift wrapper under `Vendor/GhosttyAdapter`. Narrow policy/phase hooks support dual-role input, and obsolete compatibility paths are updated for iPadOS 17; [provenance and patch](../Vendor/GhosttyAdapter/README.md) document them. It still links the exact upstream `GhosttyKit` engine binary and uses the wrapper’s HID translation, text handling, repeat and input funnel. `MiniTermCore.DualRoleKeyboard` contains only the portable state machine. [Keyboard API findings](KEYBOARD.md) separate simulated tests from unverified physical event delivery.
 
 ## APIs verified in the pinned source
 
@@ -78,3 +78,12 @@ The Personal Team build uses a **user-selected folder** through SwiftUI’s File
 `ConnectionHistoryCloudStore` runs coordinated file-provider I/O on an actor. Each device owns a replica file named `MiniTerm-<device UUID>.connections.json`, and imports the others before updating its own. Atomic writes, a 2 MB document limit, version checks and validation protect existing data from malformed files. Unchanged replicas are not rewritten. A directory `NSFilePresenter` observes external arrivals/changes; callbacks are debounced, and saves during an in-flight sync are merged and queued for another pass. Security-scoped access is balanced, the folder is persisted as a minimal bookmark, stale bookmarks are renewed, and revoked access produces a visible error while local history remains usable. Stopping sync invalidates the presenter, cancels pending work and removes the local bookmark without deleting cloud files.
 
 There is no assertion that a coordinated save means iCloud has uploaded it. Files-provider synchronization and cross-device delivery are eventual and require physical-device validation. Selecting a non-iCloud folder is supported but is not described as iCloud sync. Terminal commands/output and credentials are outside the history schema.
+
+
+## Reconnect, diagnostics, and connection annotations
+
+Reconnect creates a new `TerminalSessionModel`, bridge, in-memory terminal session, and one-shot transport. The immutable SSH destination is reused and host trust runs normally. The old view/model is retired instead of sharing a stream across attempts. A bounded value-type diagnostics timeline carries forward; old callbacks cannot mutate the new model or replay pending input.
+
+Transport failures supply an allowlisted `ConnectionFailure` separately from the human-readable UI error. Diagnostic reports serialize only phases, categories/codes, versions, and modifier edge counts; arbitrary error messages and SSH/terminal data are never inputs to the report.
+
+Optional name/favorite annotations extend the existing history schema. Their own timestamp/operation ID merges independently from connection recency, preserving customizations when older clients update a visit. Deletions carry cleared metadata revisions, and explicit clearing/unfavoriting is a real revision. Favorites are retained separately from the 30 ordinary recent entries.

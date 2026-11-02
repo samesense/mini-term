@@ -242,6 +242,7 @@
             }
 
             setupApplicationLifecycleObservers()
+            setupTraitObservers()
             syncApplicationActiveState()
             setupPlatformInput()
             #if !targetEnvironment(macCatalyst)

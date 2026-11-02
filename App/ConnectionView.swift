@@ -23,6 +23,12 @@ struct ConnectionView: View {
     @State private var session: TerminalSessionModel?
     @State private var error: String?
     @State private var showForgetTrust = false
+    @State private var showRename = false
+    @State private var editingID = ""
+    @State private var editingName = ""
+    @State private var lastFailure: ConnectionFailure?
+    @State private var failureDate = Date()
+    @State private var copiedDiagnostics = false
     @FocusState private var focusedField: Field?
     private let keychain = KeychainStore()
     private enum Field: Hashable { case host, username, port, session }
@@ -75,8 +81,17 @@ struct ConnectionView: View {
             .toolbar(.hidden, for: .navigationBar)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
-            .fullScreenCover(item: $session) { model in TerminalScreen(model: model) }
+            .fullScreenCover(item: $session) { model in
+                TerminalScreen(model: model, onReconnect: {
+                    if session?.id == model.id, let next = model.reconnectSession() { session = next }
+                }).id(model.id)
+            }
             .sheet(isPresented: $showSettings) { settingsSheet }
+            .alert("Name connection", isPresented: $showRename) {
+                TextField("Name", text: $editingName).textInputAutocapitalization(.words)
+                Button("Save") { customizeSaved(id: editingID, name: editingName) }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text("Leave blank to use the hostname.") }
             .onAppear {
                 loadPublicKey()
                 #if DEBUG && targetEnvironment(simulator)
@@ -175,6 +190,8 @@ struct ConnectionView: View {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout).foregroundStyle(LCARS.coral).textSelection(.enabled)
                     .accessibilityIdentifier("connection.error")
+                Button(copiedDiagnostics ? "Copied diagnostics" : "Copy diagnostics", action: copyFormDiagnostics)
+                    .font(.footnote)
             }
             if publicKey.isEmpty {
                 Button("Set up this iPad’s SSH key") {
@@ -187,11 +204,11 @@ struct ConnectionView: View {
 
     @ViewBuilder private var historyPanel: some View {
         if !history.document.visibleEntries.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
+            LazyVStack(alignment: .leading, spacing: 10) {
                 Text("SAVED CONNECTIONS").font(.system(.caption, design: .monospaced).weight(.medium))
                     .tracking(1.5).foregroundStyle(LCARS.lavender).accessibilityAddTraits(.isHeader)
                     .padding(.bottom, 6)
-                ForEach(Array(history.document.visibleEntries.prefix(30))) { entry in
+                ForEach(history.document.visibleEntries) { entry in
                     if let profile = entry.profile { savedRow(entry: entry, profile: profile) }
                 }
                 Text("Tap a destination to fill the form.")
@@ -209,9 +226,12 @@ struct ConnectionView: View {
             } label: {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(profile.host).font(.system(.callout, design: .monospaced).weight(.medium))
-                            .foregroundStyle(LCARS.cream).lineLimit(1).truncationMode(.middle)
-                        Text("\(profile.username) · \(profile.port) · \(profile.tmuxSession.isEmpty ? "shell" : profile.tmuxSession)")
+                        HStack(spacing: 6) {
+                            if entry.isFavorite { Image(systemName: "star.fill").font(.caption).foregroundStyle(LCARS.apricot) }
+                            Text(entry.displayName).font(.callout.weight(.medium))
+                                .foregroundStyle(LCARS.cream).lineLimit(1).truncationMode(.middle)
+                        }
+                        Text("\(profile.username)@\(profile.host) · \(profile.port) · \(profile.tmuxSession.isEmpty ? "shell" : profile.tmuxSession)")
                             .font(.caption.monospaced()).foregroundStyle(LCARS.muted).lineLimit(2)
                     }
                     Spacer(minLength: 0)
@@ -219,16 +239,22 @@ struct ConnectionView: View {
                         Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(LCARS.apricot)
                     }
                 }.padding(.vertical, 14).padding(.leading, 16)
-            }.buttonStyle(.plain).accessibilityLabel("Fill connection for \(profile.username) at \(profile.host)")
+            }.buttonStyle(.plain).accessibilityLabel("Fill \(entry.displayName), \(profile.username) at \(profile.host)\(entry.isFavorite ? ", favorite" : "")")
                 .accessibilityAddTraits(selected ? .isSelected : [])
             Menu {
+                Button {
+                    editingID = entry.id; editingName = entry.annotation?.name ?? ""; showRename = true
+                } label: { Label("Rename", systemImage: "pencil") }
+                Button {
+                    customizeSaved(id: entry.id, favorite: !entry.isFavorite)
+                } label: { Label(entry.isFavorite ? "Remove favorite" : "Favorite", systemImage: entry.isFavorite ? "star.slash" : "star") }
                 if let date = entry.lastConnectedAt { Text("Last connected \(date.formatted())") }
                 Button(role: .destructive) { history.remove(id: entry.id) } label: {
                     Label("Delete saved connection", systemImage: "trash")
                 }
             } label: {
                 Image(systemName: "ellipsis").foregroundStyle(LCARS.muted).frame(width: 44, height: 56)
-            }.accessibilityLabel("Options for \(profile.host)")
+            }.accessibilityLabel("Options for \(entry.displayName)")
         }
         .background(selected ? LCARS.lavender.opacity(0.10) : LCARS.field, in: RoundedRectangle(cornerRadius: 12))
     }
@@ -317,6 +343,26 @@ struct ConnectionView: View {
         host = profile.host; username = profile.username
         port = String(profile.port); tmuxSession = profile.tmuxSession
         error = nil
+        lastFailure = nil; copiedDiagnostics = false
+    }
+
+    private func customizeSaved(id: String, name: String? = nil, favorite: Bool? = nil) {
+        do { try history.customize(id: id, name: name, favorite: favorite) }
+        catch { displayError(error) }
+    }
+
+    private func displayError(_ caught: any Error) {
+        error = caught.localizedDescription
+        lastFailure = ConnectionFailure(caught)
+        failureDate = Date()
+        copiedDiagnostics = false
+    }
+
+    private func copyFormDiagnostics() {
+        var report = SessionDiagnostics(usesTmux: !tmuxSession.isEmpty)
+        report.record(.failed(""), failure: lastFailure, now: failureDate)
+        UIPasteboard.general.string = AppDiagnostics.text(report)
+        copiedDiagnostics = true
     }
 
     private func formConnection() throws -> SSHConnection {
@@ -328,7 +374,7 @@ struct ConnectionView: View {
 
     private func saveConnection() {
         do { history.remember(ConnectionProfile(try formConnection()), connected: false); error = nil }
-        catch { self.error = error.localizedDescription }
+        catch { displayError(error) }
     }
 
     private func loadPublicKey() {
@@ -336,12 +382,12 @@ struct ConnectionView: View {
             if let seed = try keychain.read(account: "identity.ed25519") {
                 publicKey = try SSHIdentity.publicKey(seed: seed)
             }
-        } catch { self.error = error.localizedDescription }
+        } catch { displayError(error) }
     }
 
     private func createIdentity() {
         do { _ = try identitySeed(); error = nil }
-        catch { self.error = error.localizedDescription }
+        catch { displayError(error) }
     }
 
     private func identitySeed() throws -> Data {
@@ -363,7 +409,7 @@ struct ConnectionView: View {
             let model = TerminalSessionModel(connection: connection, seed: seed)
             model.onConnected = { [history] in history.remember(ConnectionProfile(connection), connected: true) }
             session = model
-        } catch { self.error = error.localizedDescription }
+        } catch { displayError(error) }
     }
 
     private func forgetTrust() {
@@ -372,7 +418,7 @@ struct ConnectionView: View {
             let connection = try SSHConnection(host: host, username: username, port: port)
             try keychain.delete(account: "host:\(connection.hostKeyAccount)")
             error = nil
-        } catch { self.error = error.localizedDescription }
+        } catch { displayError(error) }
     }
 }
 
@@ -464,6 +510,12 @@ final class ConnectionHistoryModel: ObservableObject {
 
     func remove(id: String) {
         document.remove(id: id)
+        persist()
+        refresh()
+    }
+
+    func customize(id: String, name: String? = nil, favorite: Bool? = nil) throws {
+        try document.customize(id: id, name: name, favorite: favorite)
         persist()
         refresh()
     }

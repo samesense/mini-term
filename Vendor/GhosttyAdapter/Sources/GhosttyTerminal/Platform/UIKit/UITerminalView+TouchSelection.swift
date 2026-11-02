@@ -154,11 +154,7 @@
             touchSelection.endpoint = nil
             touchSelection.pivot = nil
             touchSelection.panUsesSelection = false
-            if #available(iOS 16.0, *), touchSelection.enabled {
-                selectionEditMenuInteraction.dismissMenu()
-            } else if touchSelection.enabled {
-                UIMenuController.shared.hideMenu()
-            }
+            if touchSelection.enabled { selectionEditMenuInteraction.dismissMenu() }
         }
 
         private func currentTouchViewport(rows: Int) -> (offset: Int, atBottom: Bool) {

@@ -7,8 +7,10 @@ import UIKit
 
 struct TerminalScreen: View {
     @ObservedObject var model: TerminalSessionModel
+    var onReconnect: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var keyboardToggleRequest = 0
+    @State private var copiedDiagnostics = false
     @AppStorage("keyboard.dualRoleCaps.enabled") private var dualRoleCaps = true
     @AppStorage("keyboard.dualRoleCaps.source") private var dualRoleSource = DualRoleKeySource.capsLock.rawValue
 
@@ -30,14 +32,30 @@ struct TerminalScreen: View {
                 .accessibilityLabel("Show or hide keyboard")
                 .accessibilityIdentifier("terminal.keyboard")
                 .disabled(model.state.isFinished)
+                Menu {
+                    Button {
+                        UIPasteboard.general.string = AppDiagnostics.text(model.diagnostics)
+                        copiedDiagnostics = true
+                    } label: {
+                        Label(copiedDiagnostics ? "Copied diagnostics" : "Copy diagnostics", systemImage: copiedDiagnostics ? "checkmark" : "doc.on.doc")
+                    }
+                } label: { Image(systemName: "ellipsis").frame(minWidth: 36, minHeight: 36) }
+                .accessibilityLabel("Connection options")
                 Button(model.state.isFinished ? "Done" : "Disconnect") {
                     model.disconnect(); dismiss()
                 }.font(.callout).accessibilityIdentifier("terminal.disconnect")
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
             if model.state.isFinished {
-                Text(model.state.label).font(.callout).foregroundStyle(.secondary)
-                    .textSelection(.enabled).padding(10)
+                VStack(spacing: 8) {
+                    Text(model.state.label).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                    if let onReconnect {
+                        Button("Reconnect", action: onReconnect).buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("terminal.reconnect")
+                        Text(model.connection.tmuxSession == nil ? "Opens a new shell." : "Returns to the same tmux session if it is still running.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }.padding(10)
             }
             NativeTerminal(model: model, keyboardToggleRequest: keyboardToggleRequest, dualRoleCaps: dualRoleCaps, source: DualRoleKeySource(rawValue: dualRoleSource) ?? .capsLock)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
