@@ -7,6 +7,9 @@ import UniformTypeIdentifiers
 
 struct ConnectionView: View {
     @StateObject private var history = ConnectionHistoryModel()
+    @ObservedObject private var keyboardDiagnostics = KeyboardEventDiagnostics.shared
+    @AppStorage("keyboard.dualRoleCaps.enabled") private var dualRoleCaps = true
+    @AppStorage("keyboard.dualRoleCaps.source") private var dualRoleSource = DualRoleKeySource.capsLock.rawValue
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var didRestoreConnection = false
@@ -233,6 +236,26 @@ struct ConnectionView: View {
     private var settingsSheet: some View {
         NavigationStack {
             Form {
+                Section {
+                    Toggle("Dual-role Caps Lock", isOn: $dualRoleCaps)
+                        .accessibilityIdentifier("settings.dualRoleCaps")
+                    if dualRoleCaps {
+                        Picker("Input source", selection: $dualRoleSource) {
+                            Text("Caps Lock events").tag(DualRoleKeySource.capsLock.rawValue)
+                            Text("Remapped left Control").tag(DualRoleKeySource.remappedLeftControl.rawValue)
+                        }
+                    }
+                    DisclosureGroup("Check keyboard event delivery") {
+                        Text("UIKit Caps: \(keyboardDiagnostics.capsDown) down / \(keyboardDiagnostics.capsUp) up")
+                        Text("UIKit left Control: \(keyboardDiagnostics.controlDown) down / \(keyboardDiagnostics.controlUp) up")
+                        Text("GameController Caps: \(keyboardDiagnostics.gcDown) down / \(keyboardDiagnostics.gcUp) up")
+                        Text(keyboardDiagnostics.hasGCKeyboard ? "GameController keyboard detected" : "No GameController keyboard detected")
+                        Text("Test inside the terminal, then return here. Counts reset when the app restarts. GameController observes events; it cannot suppress Caps Lock.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }.font(.footnote)
+                } header: { Text("Hardware keyboard") } footer: {
+                    Text("Tap Caps alone for Escape; hold with another key for Control. Requires physical press and release events. If Caps still capitalizes or releases are missing, use iPad Settings → General → Keyboard → Hardware Keyboard → Modifier Keys to map Caps Lock to Control, then select Remapped left Control here. That mode also changes the physical left Control key. Global Caps Lock suppression cannot be guaranteed in an app.")
+                }
                 Section {
                     if publicKey.isEmpty {
                         Button("Create SSH key", action: createIdentity).accessibilityIdentifier("settings.createKey")

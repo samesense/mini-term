@@ -1,4 +1,4 @@
-import GhosttyTerminal
+import MiniTermGhosttyTerminal
 import MiniTermCore
 import SwiftUI
 

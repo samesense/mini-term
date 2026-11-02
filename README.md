@@ -4,7 +4,7 @@
 
 A native iPad SSH terminal for connecting to a Mac and resuming tmux coding sessions. SwiftUI hosts a UIKit **Ghostty Metal terminal**; Apple SwiftNIO SSH provides the encrypted PTY transport.
 
-**Status:** **20 passing tests**, successful iOS simulator/device builds, and user-reported physical iPad SSH and touch session-switcher testing. Connection history supports an optional shared iCloud Drive folder; physical cloud synchronization remains to be verified. See [architecture and dependency investigation](docs/ARCHITECTURE.md) and [validation](docs/VALIDATION.md) for the recorded evidence and remaining checks.
+**Status:** **40 passing tests**, successful iOS simulator/device builds, and user-reported physical iPad SSH and touch session-switcher testing. Connection history supports an optional shared iCloud Drive folder; physical cloud synchronization remains to be verified. See [architecture and dependency investigation](docs/ARCHITECTURE.md) and [validation](docs/VALIDATION.md) for the recorded evidence and remaining checks.
 
 ## A look inside
 
@@ -75,6 +75,14 @@ Match the displayed SHA256 fingerprint to the relevant server key before tapping
 With a tmux session name, the app requests a PTY and runs `tmux new-session -A -s NAME`: it attaches to the named session or creates it. Launch Codex, Claude Code, Vim, or other programs from that remote shell. Disconnecting closes SSH; tmux owns the continuing remote processes. To resume, reconnect to the same Mac and enter the same name. The original SSH socket is never assumed to survive. An ordinary shell is requested when the tmux name is blank.
 
 Use the Ghostty keyboard accessory bar for terminal keys/modifiers; external keyboards use Ghostty’s native key handling. Long press/double tap for selection and copy, use the edit menu or hardware shortcut to paste, and use two-finger scrolling for local history. Pinch or Ghostty’s font-size keyboard shortcuts adjust the terminal font. Remote OSC 52 clipboard access is denied; user-initiated copy/paste remains available. Only text clipboard contents make sense over SSH; app-local file paths are not uploaded to your Mac.
+
+## Dual-role Caps Lock
+
+Enabled by default under **Settings → Hardware keyboard**: release Caps alone for Escape, or hold it with another key for Control. There is no time threshold. Shift/Option modifiers, native key repeat and focus cleanup use the existing Ghostty input path.
+
+**Physical Caps delivery is not guaranteed by iPadOS.** If Caps still capitalizes or tap/release is missing, map Caps Lock to Control in iPad **Settings → General → Keyboard → Hardware Keyboard → Modifier Keys**, then choose **Remapped left Control** in Mini Term. That also gives the physical left Control key the dual role. The app cannot guarantee suppression of system-wide Caps Lock behavior. Event counters in Settings help check delivery; USB and Bluetooth keyboards still need physical testing.
+
+See [API findings, fallback and hardware test checklist](docs/KEYBOARD.md). `swift test` covers the state machine; `python3 Scripts/test_keyboard_input.py SIMULATOR_UDID` runs the isolated Ghostty adapter probe with UIKit test doubles.
 
 ## Save connections and share history through iCloud Drive
 

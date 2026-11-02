@@ -36,13 +36,13 @@ add('app', 'isa = PBXFileReference; explicitFileType = wrapper.application; incl
 add('AppGroup', 'isa = PBXGroup; children = (' + ', '.join(ref('file:' + p.name) for p in sources) + ', ' + ref('file:Assets.xcassets') + ',); path = App; sourceTree = "<group>";')
 add('Products', f'isa = PBXGroup; children = ({ref("app")},); name = Products; sourceTree = "<group>";')
 add('MainGroup', f'isa = PBXGroup; children = ({ref("AppGroup")}, {ref("Products")},); sourceTree = "<group>";')
-add('GhosttyPackage', 'isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/Lakr233/libghostty-spm.git"; requirement = {kind = exactVersion; version = 2.2.2026102101;};')
+add('GhosttyPackage', 'isa = XCLocalSwiftPackageReference; relativePath = Vendor/GhosttyAdapter;')
 add('CorePackage', 'isa = XCLocalSwiftPackageReference; relativePath = .;')
-for name, package in [('GhosttyTerminal', 'GhosttyPackage'), ('MiniTermCore', 'CorePackage')]:
+for name, package in [('MiniTermGhosttyTerminal', 'GhosttyPackage'), ('MiniTermCore', 'CorePackage')]:
     add('product:' + name, f'isa = XCSwiftPackageProductDependency; package = {ref(package)}; productName = {name};')
     add('link:' + name, f'isa = PBXBuildFile; productRef = {ref("product:" + name)};')
 add('Sources', 'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (' + ', '.join(ref('build:' + p.name) for p in sources) + ',); runOnlyForDeploymentPostprocessing = 0;')
-add('Frameworks', 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (' + ', '.join(ref('link:' + n) for n in ['MiniTermCore', 'GhosttyTerminal']) + ',); runOnlyForDeploymentPostprocessing = 0;')
+add('Frameworks', 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (' + ', '.join(ref('link:' + n) for n in ['MiniTermCore', 'MiniTermGhosttyTerminal']) + ',); runOnlyForDeploymentPostprocessing = 0;')
 add('Resources', 'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (' + ref('build:Assets.xcassets') + ',); runOnlyForDeploymentPostprocessing = 0;')
 project_settings = {
     'CLANG_ENABLE_MODULES': 'YES', 'CLANG_ENABLE_OBJC_ARC': 'YES',
@@ -73,9 +73,10 @@ for scope, base in [('Project', project_settings), ('Target', target_settings)]:
                            'ENABLE_TESTABILITY': 'YES' if configuration == 'Debug' else 'NO'})
             if configuration == 'Debug':
                 values['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = '"DEBUG $(inherited)"'
+                values['ONLY_ACTIVE_ARCH'] = 'YES'
         add(scope + configuration, f'isa = XCBuildConfiguration; buildSettings = {settings(values)}; name = {configuration};')
     add(scope + 'Configs', f'isa = XCConfigurationList; buildConfigurations = ({ref(scope + "Debug")}, {ref(scope + "Release")},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
-add('Target', f'isa = PBXNativeTarget; buildConfigurationList = {ref("TargetConfigs")}; buildPhases = ({ref("Sources")}, {ref("Frameworks")}, {ref("Resources")},); buildRules = (); dependencies = (); name = MiniTerm; packageProductDependencies = ({ref("product:MiniTermCore")}, {ref("product:GhosttyTerminal")},); productName = MiniTerm; productReference = {ref("app")}; productType = "com.apple.product-type.application";')
+add('Target', f'isa = PBXNativeTarget; buildConfigurationList = {ref("TargetConfigs")}; buildPhases = ({ref("Sources")}, {ref("Frameworks")}, {ref("Resources")},); buildRules = (); dependencies = (); name = MiniTerm; packageProductDependencies = ({ref("product:MiniTermCore")}, {ref("product:MiniTermGhosttyTerminal")},); productName = MiniTerm; productReference = {ref("app")}; productType = "com.apple.product-type.application";')
 add('Project', f'isa = PBXProject; attributes = {{BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 2600; TargetAttributes = {{{ref("Target")} = {{CreatedOnToolsVersion = 26.0;}};}};}}; buildConfigurationList = {ref("ProjectConfigs")}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base,); mainGroup = {ref("MainGroup")}; packageReferences = ({ref("CorePackage")}, {ref("GhosttyPackage")},); productRefGroup = {ref("Products")}; projectDirPath = ""; projectRoot = ""; targets = ({ref("Target")},);')
 project = (args.output_root or ROOT) / 'MiniTerm.xcodeproj'
 project.mkdir(parents=True, exist_ok=True)

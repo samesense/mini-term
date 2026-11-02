@@ -1,4 +1,6 @@
-import GhosttyTerminal
+import MiniTermGhosttyTerminal
+import GameController
+import Combine
 import MiniTermCore
 import SwiftUI
 import UIKit
@@ -7,6 +9,8 @@ struct TerminalScreen: View {
     @ObservedObject var model: TerminalSessionModel
     @Environment(\.dismiss) private var dismiss
     @State private var keyboardToggleRequest = 0
+    @AppStorage("keyboard.dualRoleCaps.enabled") private var dualRoleCaps = true
+    @AppStorage("keyboard.dualRoleCaps.source") private var dualRoleSource = DualRoleKeySource.capsLock.rawValue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,7 +39,7 @@ struct TerminalScreen: View {
                 Text(model.state.label).font(.callout).foregroundStyle(.secondary)
                     .textSelection(.enabled).padding(10)
             }
-            NativeTerminal(model: model, keyboardToggleRequest: keyboardToggleRequest)
+            NativeTerminal(model: model, keyboardToggleRequest: keyboardToggleRequest, dualRoleCaps: dualRoleCaps, source: DualRoleKeySource(rawValue: dualRoleSource) ?? .capsLock)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         // Keep the whole host steady while UIKit sizes the terminal above the keyboard/accessory.
@@ -56,8 +60,11 @@ struct TerminalScreen: View {
 private struct NativeTerminal: UIViewControllerRepresentable {
     let model: TerminalSessionModel
     let keyboardToggleRequest: Int
+    let dualRoleCaps: Bool
+    let source: DualRoleKeySource
     func makeUIViewController(context: Context) -> TerminalViewController { TerminalViewController(model: model) }
     func updateUIViewController(_ uiViewController: TerminalViewController, context: Context) {
+        uiViewController.configureKeyboard(enabled: dualRoleCaps, source: source)
         uiViewController.updateKeyboardRequest(keyboardToggleRequest)
     }
 }
@@ -90,6 +97,10 @@ final class TerminalViewController: UIViewController {
         keyboardLayout = TerminalKeyboardLayout(terminal: terminal, host: view)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged),
                                                name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+    }
+
+    func configureKeyboard(enabled: Bool, source: DualRoleKeySource) {
+        terminal.configureDualRole(enabled: enabled, source: source)
     }
 
     func updateKeyboardRequest(_ request: Int) {
@@ -168,12 +179,225 @@ final class TerminalKeyboardLayout {
 /// A tap still travels through Ghostty's normal mouse pipeline. While a remote TUI
 /// owns the mouse, keep its grid steady instead of toggling the keyboard after each click.
 private final class InteractiveTerminalView: TerminalView {
+    private var keyboard = DualRoleKeyboard()
+    private var nativeKeys: [UInt16: UIKey] = [:]
+    private var dispatchedModifiers: KeyboardModifiers?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        for name in [UIApplication.willResignActiveNotification, UIScene.willDeactivateNotification,
+                     UIWindow.didResignKeyNotification, Notification.Name.GCKeyboardDidDisconnect] {
+            NotificationCenter.default.addObserver(self, selector: #selector(cancelDualRole), name: name, object: nil)
+        }
+        _ = KeyboardEventDiagnostics.shared
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    func configureDualRole(enabled: Bool, source: DualRoleKeySource) {
+        if keyboard.enabled != enabled || keyboard.source != source { cancelHardwareKeyRepeat() }
+        dispatch(keyboard.configure(enabled: enabled, source: source))
+    }
+
+    @objc private func cancelDualRole() {
+        cancelHardwareKeyRepeat()
+        dispatch(keyboard.cancel())
+    }
+
+    override func resignFirstResponder() -> Bool {
+        cancelDualRole()
+        return super.resignFirstResponder()
+    }
+
+    override func didMoveToWindow() {
+        if window == nil { cancelDualRole() }
+        super.didMoveToWindow()
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        route(presses, phase: .down, event: event)
+    }
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        route(presses, phase: .up, event: event)
+    }
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        cancelDualRole()
+        super.pressesCancelled(presses.filter { !isDualKey($0) }, with: event)
+    }
+    override func pressesChanged(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let remainder = presses.filter { !isDualKey($0) }
+        if !remainder.isEmpty { super.pressesChanged(remainder, with: event) }
+    }
+
+    private func isDualKey(_ press: UIPress) -> Bool {
+        keyboard.enabled && press.key?.keyCode.rawValue == Int(keyboard.source.usage)
+    }
+
+    private func route(_ presses: Set<UIPress>, phase: HardwareKeyEvent.Phase, event: UIPressesEvent?) {
+        let ordered = presses.sorted {
+            let a = isDualKey($0), b = isDualKey($1)
+            if a != b { return phase == .down ? a : !a }
+            let leftModifier = (0xE0...0xE7).contains($0.key?.keyCode.rawValue ?? 0)
+            let rightModifier = (0xE0...0xE7).contains($1.key?.keyCode.rawValue ?? 0)
+            if $0.timestamp == $1.timestamp && leftModifier != rightModifier {
+                return phase == .down ? leftModifier : !leftModifier
+            }
+            return $0.timestamp == $1.timestamp
+                ? ($0.key?.keyCode.rawValue ?? 0) < ($1.key?.keyCode.rawValue ?? 0)
+                : $0.timestamp < $1.timestamp
+        }
+        for press in ordered {
+            guard let key = press.key else {
+                if phase == .down { super.pressesBegan([press], with: event) }
+                else { super.pressesEnded([press], with: event) }
+                continue
+            }
+            let usage = UInt16(clamping: key.keyCode.rawValue)
+            KeyboardEventDiagnostics.shared.recordUIKit(usage: usage, down: phase == .down)
+            let output = keyboard.process(.init(usage, phase, .init(key.modifierFlags)))
+            for action in output {
+                switch action {
+                case .synthesize:
+                    dispatch([action])
+                case .forward:
+                    if phase == .down {
+                        nativeKeys[usage] = key
+                        super.pressesBegan([press], with: event)
+                    } else {
+                        super.pressesEnded([press], with: event)
+                        nativeKeys.removeValue(forKey: usage)
+                    }
+                }
+            }
+        }
+    }
+
+    private func dispatch(_ actions: [KeyboardDispatch]) {
+        for action in actions {
+            switch action {
+            case .forward(let event):
+                if let key = nativeKeys.removeValue(forKey: event.usage) {
+                    dispatchedModifiers = event.modifiers
+                    releaseHardwareKey(key)
+                    dispatchedModifiers = nil
+                }
+            case .synthesize(let event):
+                if event.usage == 0xE0 && event.phase == .up { nativeKeys.removeValue(forKey: event.usage) }
+                let key: TerminalKey = event.usage == 0x29 ? .escape : .controlLeft
+                var mods: TerminalInputModifiers = []
+                if event.modifiers.contains(.control) { mods.insert(.ctrl) }
+                if event.modifiers.contains(.shift) { mods.insert(.shift) }
+                if event.modifiers.contains(.option) { mods.insert(.alt) }
+                if event.modifiers.contains(.command) { mods.insert(.super_) }
+                let phase: TerminalKeyAction = event.phase == .up ? .release : event.phase == .down ? .press : .repeat
+                _ = sendKey(TerminalKeyPress(key, modifiers: mods), action: phase)
+            }
+        }
+    }
+
+    override func hardwareKeyModifierFlags(_ flags: UIKeyModifierFlags) -> UIKeyModifierFlags {
+        guard keyboard.enabled || dispatchedModifiers != nil else { return flags }
+        var result = flags.subtracting([.alphaShift, .control, .shift, .alternate, .command])
+        let mods = dispatchedModifiers ?? keyboard.modifiers
+        if mods.contains(.control) { result.insert(.control) }
+        if mods.contains(.shift) { result.insert(.shift) }
+        if mods.contains(.option) { result.insert(.alternate) }
+        if mods.contains(.command) { result.insert(.command) }
+        return result
+    }
+
+    override func hardwareKeyCharacters(_ key: UIKey) -> String {
+        // UIKit normally collapses native Ctrl+ASCII-letter text to a control
+        // byte, which the wrapper replaces with the unmodified letter. Adding
+        // Ctrl after dispatch must supply that same canonical text, including
+        // under Shift; otherwise Ghostty encodes a different Ctrl+Shift chord.
+        if keyboard.enabled, keyboard.modifiers.contains(.control),
+           !key.modifierFlags.contains(.control),
+           key.modifierFlags.isDisjoint(with: [.alternate, .command]),
+           key.charactersIgnoringModifiers.utf8.count == 1,
+           let byte = key.charactersIgnoringModifiers.utf8.first, (97...122).contains(byte) {
+            return key.charactersIgnoringModifiers
+        }
+        // UIKit can latch capitalization before dispatch. Mask that effect for
+        // ordinary layout-provided text; never invent Option/dead-key mappings.
+        guard keyboard.enabled, key.modifierFlags.contains(.alphaShift),
+              key.modifierFlags.isDisjoint(with: [.alternate, .command]) else { return key.characters }
+        let unmodified = key.charactersIgnoringModifiers
+        return keyboard.modifiers.contains(.shift) ? unmodified.uppercased() : unmodified
+    }
+
+    override func willSendInputKey(_ press: TerminalKeyPress) {
+        var mods: KeyboardModifiers = []
+        if press.modifiers.contains(.ctrl) { mods.insert(.control) }
+        if press.modifiers.contains(.shift) { mods.insert(.shift) }
+        if press.modifiers.contains(.alt) { mods.insert(.option) }
+        if press.modifiers.contains(.super_) { mods.insert(.command) }
+        dispatch(keyboard.keyCommand(modifiers: mods))
+    }
+
+    override func transformInputKey(_ press: TerminalKeyPress) -> TerminalKeyPress {
+        guard keyboard.enabled else { return press }
+        var result = press
+        result.modifiers.remove(.caps)
+        if keyboard.modifiers.contains(.control) { result.modifiers.insert(.ctrl) }
+        return result
+    }
+
     override func toggleSoftwareKeyboard() {
         guard !isMouseCaptured else { return }
         super.toggleSoftwareKeyboard()
     }
+    func toggleKeyboardFromToolbar() { super.toggleSoftwareKeyboard() }
+}
 
-    func toggleKeyboardFromToolbar() {
-        super.toggleSoftwareKeyboard()
+private extension KeyboardModifiers {
+    init(_ flags: UIKeyModifierFlags) {
+        self = []
+        if flags.contains(.control) { insert(.control) }
+        if flags.contains(.shift) { insert(.shift) }
+        if flags.contains(.alternate) { insert(.option) }
+        if flags.contains(.command) { insert(.command) }
+        if flags.contains(.alphaShift) { insert(.capsLock) }
+    }
+}
+
+/// Counts only Caps/Control edges, never text. GCKeyboard is diagnostic-only:
+/// mixing its asynchronous events with UIKit would duplicate/reorder input.
+@MainActor
+final class KeyboardEventDiagnostics: NSObject, ObservableObject {
+    static let shared = KeyboardEventDiagnostics()
+    @Published private(set) var capsDown = 0
+    @Published private(set) var capsUp = 0
+    @Published private(set) var controlDown = 0
+    @Published private(set) var controlUp = 0
+    @Published private(set) var gcDown = 0
+    @Published private(set) var gcUp = 0
+    @Published private(set) var hasGCKeyboard = false
+    private weak var observedButton: GCControllerButtonInput?
+
+    override init() {
+        super.init()
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshKeyboard), name: .GCKeyboardDidConnect, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshKeyboard), name: .GCKeyboardDidDisconnect, object: nil)
+        refreshKeyboard()
+    }
+
+    func recordUIKit(usage: UInt16, down: Bool) {
+        if usage == 0x39 { if down { capsDown += 1 } else { capsUp += 1 } }
+        if usage == 0xE0 { if down { controlDown += 1 } else { controlUp += 1 } }
+    }
+
+    @objc private func refreshKeyboard() {
+        hasGCKeyboard = GCKeyboard.coalesced != nil
+        guard let button = GCKeyboard.coalesced?.keyboardInput?.button(forKeyCode: .capsLock),
+              button !== observedButton else { return }
+        observedButton = button
+        let previous = button.pressedChangedHandler
+        button.pressedChangedHandler = { [weak self] button, value, pressed in
+            previous?(button, value, pressed)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if pressed { self.gcDown += 1 } else { self.gcUp += 1 }
+            }
+        }
     }
 }

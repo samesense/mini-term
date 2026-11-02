@@ -16,6 +16,10 @@ Use Lakr233’s **full Ghostty embedding fork**, not libghostty-vt alone and not
 
 Both resolved files pin transitive versions/revisions, including DisplayLink `3.0.1`. Ghostty’s binary target URL points to `upstream.1e9e14af5df1-3/GhosttyKit.xcframework.zip`, with package-verified SHA256 checksum `0bf7e5e13f8e42ffca040a6cef7e985fc30bcaa81ff513bd2a93eb097398c6d8`.
 
+## Host keyboard adapter
+
+The app imports `MiniTermGhosttyTerminal`, a checked-in copy of the pinned Swift wrapper under `Vendor/GhosttyAdapter`. Five upstream source files have narrow policy/phase hooks for dual-role keyboard input; [provenance and patch](../Vendor/GhosttyAdapter/README.md) document them. It still links the exact upstream `GhosttyKit` engine binary and uses the wrapper’s HID translation, text handling, repeat and input funnel. `MiniTermCore.DualRoleKeyboard` contains only the portable state machine. [Keyboard API findings](KEYBOARD.md) separate simulated tests from unverified physical event delivery.
+
 ## APIs verified in the pinned source
 
 `GhosttyTerminal` supplies `TerminalView` (an alias for `UITerminalView` on iOS), `TerminalController`, `TerminalSurfaceOptions`, and `InMemoryTerminalSession`. Selecting `TerminalSurfaceOptions(backend: .inMemory(session))` activates the fork’s `GHOSTTY_SURFACE_IO_BACKEND_HOST_MANAGED` extension. This avoids spawning a local PTY or subprocess inside iPadOS.

@@ -1,0 +1,57 @@
+--- a/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+Input.swift
++++ b/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+Input.swift
+@@ -14,0 +15,2 @@
++            willSendInputKey(press)
++            let press = transformInputKey(press)
+--- a/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+Keyboard.swift
++++ b/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+Keyboard.swift
+@@ -360 +360 @@
+-            var derivedText = TerminalInputText.filteredFunctionKeyText(key.characters)
++            var derivedText = TerminalInputText.filteredFunctionKeyText(hardwareKeyCharacters(key))
+@@ -446 +446 @@
+-            return flags
++            return hardwareKeyModifierFlags(flags)
+@@ -683 +683,3 @@
+-                isKeyCommand: keyCommandInput(for: key, filteredModifierFlags: modifierFlags) != nil,
++                // A host-added Control is not a UIKit command; its repeats
++                // still belong to this physical-key timer.
++                isKeyCommand: modifierFlags == key.modifierFlags && keyCommandInput(for: key, filteredModifierFlags: modifierFlags) != nil,
+--- a/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+PublicInput.swift
++++ b/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+PublicInput.swift
+@@ -12,0 +13,7 @@
++        /// Phase-preserving special/modifier injection through the native funnel.
++        @discardableResult
++        func sendKey(_ press: TerminalKeyPress, action: TerminalKeyAction) -> Bool {
++            if press.key == .escape && action == .press { stopKeyRepeat() }
++            return press.withKeyEvent(action: action.ghosttyAction) { sendInputKeyEvent($0) }
++        }
++
+--- a/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView.swift
++++ b/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView.swift
+@@ -14,0 +15,12 @@
++        /// Host policy; all physical input and repeat use the normal pipeline.
++        open func hardwareKeyModifierFlags(_ flags: UIKeyModifierFlags) -> UIKeyModifierFlags { flags }
++        open func hardwareKeyCharacters(_ key: UIKey) -> String { key.characters }
++        open func willSendInputKey(_ press: TerminalKeyPress) {}
++        open func transformInputKey(_ press: TerminalKeyPress) -> TerminalKeyPress { press }
++
++        /// Release a native key cancelled by a host policy/focus transition.
++        public func releaseHardwareKey(_ key: UIKey) {
++            _ = handleKeyPress(key, action: GHOSTTY_ACTION_RELEASE)
++        }
++        public func cancelHardwareKeyRepeat() { stopKeyRepeat() }
++
+--- a/Sources/GhosttyTerminal/Surface/TerminalKeyPress.swift
++++ b/Sources/GhosttyTerminal/Surface/TerminalKeyPress.swift
+@@ -6,0 +7,11 @@
++
++public enum TerminalKeyAction: Sendable {
++    case press, release, `repeat`
++    var ghosttyAction: ghostty_input_action_e {
++        switch self {
++        case .press: GHOSTTY_ACTION_PRESS
++        case .release: GHOSTTY_ACTION_RELEASE
++        case .repeat: GHOSTTY_ACTION_REPEAT
++        }
++    }
++}

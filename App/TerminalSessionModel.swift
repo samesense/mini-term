@@ -1,6 +1,6 @@
 import Combine
 import Foundation
-import GhosttyTerminal
+import MiniTermGhosttyTerminal
 import MiniTermCore
 
 /// Synchronous Ghostty callbacks can arrive on rendering/parser threads. This box only routes bytes;
