@@ -149,13 +149,16 @@ private struct NativeTerminal: UIViewControllerRepresentable {
 
 /// Ghostty supplies UITextInput, hardware keys, touch selection, clipboard, scrolling and its shortcut bar.
 /// The extra bottom constraint handles iPad versions where the keyboard guide omits the accessory bar.
-final class TerminalViewController: UIViewController {
+final class TerminalViewController: UIViewController, TerminalSurfaceGridResizeDelegate {
     private let model: TerminalSessionModel
     private let terminal = InteractiveTerminalView(frame: .zero)
     private var lastKeyboardToggleRequest = 0
     private var inputActive = true
+    private var cellHeightPixels: UInt32 = 0
     private let controller = TerminalController { builder in
         builder.withFontSize(13)
+        builder.withWindowPaddingY(0)
+        builder.withCustom("window-padding-balance", "false")
         builder.withCustom("clipboard-read", "deny")
         builder.withCustom("clipboard-write", "deny")
     }
@@ -168,12 +171,14 @@ final class TerminalViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(white: 0.13, alpha: 1)
+        terminal.delegate = self
         terminal.configuration = TerminalSurfaceOptions(backend: .inMemory(model.terminalSession), fontSize: 13)
         terminal.controller = controller
         terminal.accessibilityIdentifier = "terminal.surface"
         terminal.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(terminal)
         keyboardLayout = TerminalKeyboardLayout(terminal: terminal, host: view)
+        updateCellHeight()
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged),
                                                name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
     }
@@ -206,7 +211,20 @@ final class TerminalViewController: UIViewController {
         updateKeyboardLayout()
     }
 
-    override func viewDidLayoutSubviews() { super.viewDidLayoutSubviews(); terminal.fitToSize() }
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        keyboardLayout.updateGridHeight()
+        terminal.fitToSize()
+    }
+
+    func terminalDidResize(_ size: TerminalGridMetrics) {
+        cellHeightPixels = size.cellHeightPixels
+        updateCellHeight()
+    }
+
+    private func updateCellHeight() {
+        keyboardLayout?.updateCellHeight(pixels: cellHeightPixels, scale: terminal.contentScaleFactor)
+    }
 
     @objc private func keyboardChanged(_ notification: Notification) {
         guard let end = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
@@ -229,6 +247,9 @@ final class TerminalViewController: UIViewController {
 final class TerminalKeyboardLayout {
     private let host: UIView
     private let overlap: NSLayoutConstraint
+    private let gridHeight: NSLayoutConstraint
+    private var cellPixels: CGFloat = 0
+    private var scale: CGFloat = 1
 
     init(terminal: UIView, host: UIView) {
         self.host = host
@@ -241,13 +262,19 @@ final class TerminalKeyboardLayout {
         overlap.identifier = "terminal.keyboardAccessoryLimit"
         let fill = terminal.bottomAnchor.constraint(equalTo: host.keyboardLayoutGuide.topAnchor)
         fill.priority = .defaultHigh
+        let topFill = terminal.topAnchor.constraint(equalTo: safe.topAnchor)
+        topFill.priority = .defaultLow
+        gridHeight = terminal.heightAnchor.constraint(equalToConstant: 0)
+        // Keyboard avoidance wins over a temporarily stale grid height during resizing.
+        gridHeight.priority = UILayoutPriority(749)
+        gridHeight.identifier = "terminal.wholeRows"
         NSLayoutConstraint.activate([
-            terminal.topAnchor.constraint(equalTo: safe.topAnchor),
+            terminal.topAnchor.constraint(greaterThanOrEqualTo: safe.topAnchor),
             terminal.leadingAnchor.constraint(equalTo: safe.leadingAnchor),
             terminal.trailingAnchor.constraint(equalTo: safe.trailingAnchor),
             terminal.bottomAnchor.constraint(lessThanOrEqualTo: host.bottomAnchor),
             terminal.heightAnchor.constraint(greaterThanOrEqualToConstant: 0),
-            overlap, fill,
+            overlap, fill, topFill,
         ])
     }
 
@@ -260,6 +287,30 @@ final class TerminalKeyboardLayout {
         } ?? false
         let offset = docked ? max(-height, min(0, keyboardFrame!.minY - bottom)) : 0
         if overlap.constant != offset { overlap.constant = offset }
+        updateGridHeight()
+    }
+
+    func updateCellHeight(pixels: UInt32, scale: CGFloat) {
+        guard cellPixels != CGFloat(pixels) || self.scale != scale else { return }
+        cellPixels = CGFloat(pixels)
+        self.scale = scale
+        updateGridHeight()
+    }
+
+    func updateGridHeight() {
+        let top = host.safeAreaLayoutGuide.layoutFrame.minY
+        let bottom = min(host.bounds.maxY + overlap.constant, host.keyboardLayoutGuide.layoutFrame.minY)
+        let available = max(0, bottom - top)
+        guard cellPixels > 0, scale > 0, scale.isFinite, available > 0, available.isFinite else {
+            gridHeight.isActive = false
+            return
+        }
+        // Size the actual view to complete pixel rows. UIKit then places both rendered
+        // cells and their native touch coordinates at the bottom without scaling/clipping.
+        let rows = floor((available * scale).rounded(.down) / cellPixels)
+        let height = (rows * cellPixels / scale).nextUp
+        if abs(gridHeight.constant - height) > 0.001 { gridHeight.constant = height }
+        gridHeight.isActive = true
     }
 }
 

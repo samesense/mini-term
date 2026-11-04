@@ -1,5 +1,13 @@
 # Validation record and acceptance checklist
 
+## Terminal whole-row bottom alignment — 2026-11-03
+
+The terminal view reached the bottom edge, but Ghostty's two-point vertical padding and the unused fraction of a text row still left tmux's last row above it. The app now removes vertical engine padding, uses Ghostty's actual cell-height metrics to size the view to complete pixel rows, and anchors that view to the keyboard/bottom edge. Fractional leftover space sits above the first row. Touch coordinates follow the actual view position; no renderer scaling, clipping, or tmux configuration changes are used.
+
+- **PASS:** 24 UIKit layout checks, including whole-row sizing/bottom placement, zoom, docked keyboard positioning, stale constraints during a short resize, recovery and unknown-metric fallback.
+- **PASS:** 33 simulator checks with the real Ghostty/workspace views, including bottom geometry, switching, browser replacement and reconnect.
+- **PASS:** signed iPad build and installation. The first physical probe launch was prevented by the device lock; hardware confirmation requires the iPad to be unlocked.
+
 ## Preview bottom-edge layout — 2026-11-03
 
 The physical screenshot showed the preview stopping above the bottom safe area and exposing the gray workspace background. Set the preview host's keyboard guide to `usesBottomSafeArea = false`, matching the terminal host: content fills the bottom region when the keyboard is hidden and still follows the keyboard when shown.

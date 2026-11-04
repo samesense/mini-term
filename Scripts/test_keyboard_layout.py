@@ -117,6 +117,38 @@ final class ProbeController: UIViewController {
         host.layoutIfNeeded()
         layout.update(keyboardFrame: nil)
         expect(host.bounds.height - host.safeAreaInsets.top, "top safe area remains respected")
+
+        // Whole-cell terminal rows sit against the bottom, with fractional space above.
+        host.frame = CGRect(x: 0, y: 100, width: 700, height: 400)
+        host.layoutIfNeeded()
+        layout.update(keyboardFrame: nil)
+        layout.updateCellHeight(pixels: 36, scale: 2)
+        expect(396, "whole rows use the largest fitting height")
+        func expectBottom(_ bottom: CGFloat, _ label: String) {
+            guard abs(terminal.frame.maxY - bottom) < 0.5 else {
+                print("FAIL: \(label): expected bottom \(bottom), got \(terminal.frame)")
+                fflush(stdout)
+                exit(1)
+            }
+            checks += 1
+        }
+        expectBottom(400, "fractional row space sits above the grid")
+        layout.update(keyboardFrame: CGRect(x: 0, y: 250, width: 700, height: 150))
+        expect(234, "whole rows above a docked keyboard")
+        expectBottom(250, "last row hugs the keyboard edge")
+        host.frame.size.height = 100
+        expect(0, "stale grid and keyboard offset during a short resize")
+        layout.update(keyboardFrame: nil)
+        expect(90, "complete rows recover after keyboard dismissal in a short host")
+        expectBottom(100, "short host still anchors the last row")
+        host.frame.size.height = 400
+        host.layoutIfNeeded()
+        layout.update(keyboardFrame: nil)
+        layout.updateCellHeight(pixels: 58, scale: 2)
+        expect(377, "font zoom recomputes complete rows")
+        expectBottom(400, "zoom preserves bottom alignment")
+        layout.updateCellHeight(pixels: 0, scale: 2)
+        expect(400, "unknown cell metrics retain the original fill layout")
         print("PASS: \(checks) terminal keyboard layout checks")
         fflush(stdout)
         exit(0)
@@ -146,7 +178,7 @@ final class ProbeController: UIViewController {
         try:
             result = run("xcrun", "simctl", "launch", "--console", sys.argv[1], bundle, capture_output=True, timeout=30)
             print(result.stdout)
-            if "PASS: 14 terminal keyboard layout checks" not in result.stdout or "Unable to simultaneously satisfy constraints" in result.stdout + result.stderr:
+            if "PASS: 24 terminal keyboard layout checks" not in result.stdout or "Unable to simultaneously satisfy constraints" in result.stdout + result.stderr:
                 sys.exit(result.stderr or "Keyboard layout probe failed")
         finally:
             run("xcrun", "simctl", "uninstall", sys.argv[1], bundle)
