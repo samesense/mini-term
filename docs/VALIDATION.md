@@ -6,7 +6,7 @@ The terminal view reached the bottom edge, but Ghostty's two-point vertical padd
 
 - **PASS:** 24 UIKit layout checks, including whole-row sizing/bottom placement, zoom, docked keyboard positioning, stale constraints during a short resize, recovery and unknown-metric fallback.
 - **PASS:** 33 simulator checks with the real Ghostty/workspace views, including bottom geometry, switching, browser replacement and reconnect.
-- **PASS:** signed iPad build and installation. The first physical probe launch was prevented by the device lock; hardware confirmation requires the iPad to be unlocked.
+- **PASS:** signed iPad build and installation, followed by all 33 workspace checks on the unlocked physical iPad. A fresh screenshot of the real connected tmux session confirms its final status row meets the bottom screen edge; fractional unused space is above the first row.
 
 ## Preview bottom-edge layout — 2026-11-03
 
