@@ -99,6 +99,8 @@ private final class WorkspaceFeatureRunner: ObservableObject {
     @Published var showWorkspace = false
     private var checks: [String] = []
     private var failures: [String] = []
+    private var fileSheetDismissals = 0
+    func fileSheetDidDismiss() { fileSheetDismissals += 1 }
     private func check(_ condition: Bool, _ label: String) { checks.append(label); if !condition { failures.append(label) } }
     private func wait(_ condition: @MainActor () -> Bool) async throws {
         for _ in 0..<600 { if condition() { return }; try await Task.sleep(for: .milliseconds(25)) }
@@ -139,6 +141,8 @@ private final class WorkspaceFeatureRunner: ObservableObject {
             recovery = owner; showWorkspace = true
             try await wait { model.state == .connected }
             check(model.state == .connected, "recovery workspace connects")
+            try await Task.sleep(for: .milliseconds(200))
+            capture(name: "terminal-toolbar.png", toolbarOnly: true)
             owner.sceneActive(false); owner.sceneActive(true)
             try await Task.sleep(for: .milliseconds(200))
             check(owner.session === model && model.state == .connected, "healthy wake verifies existing socket without replacing workspace")
@@ -173,8 +177,9 @@ private final class WorkspaceFeatureRunner: ObservableObject {
             try await wait { !model.files.busy }
             check(model.files.message?.contains("status 4") == true, "existing remote file cannot be overwritten")
             check(model.state == .connected && preview.browser?.webView.title == "SSH_PREVIEW_OK", "file operations keep terminal and preview connected")
+            let priorDismissals = fileSheetDismissals
             showFiles = false
-            try await Task.sleep(for: .milliseconds(650))
+            try await wait { self.fileSheetDismissals > priorDismissals }
             // Download at model level to inspect its temporary export before presenting Files.
             if let file = model.files.entries.first(where: { $0.name == "hello.txt" }) {
                 model.files.download(file)
@@ -231,10 +236,11 @@ private final class WorkspaceFeatureRunner: ObservableObject {
             capture()
         }
     }
-    private func capture() {
+    private func capture(name: String = "workspace-files.png", toolbarOnly: Bool = false) {
         guard let window = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).flatMap(\.windows).first(where: \.isKeyWindow) else { return }
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
-        try? image.pngData()?.write(to: URL.documentsDirectory.appendingPathComponent("workspace-files.png"))
+        let bounds = toolbarOnly ? CGRect(x: 0, y: 0, width: window.bounds.width, height: min(180, window.bounds.height)) : window.bounds
+        let image = UIGraphicsImageRenderer(bounds: bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: !toolbarOnly) }
+        try? image.pngData()?.write(to: URL.documentsDirectory.appendingPathComponent(name))
     }
     private func exportPicker() -> UIDocumentPickerViewController? {
         func search(_ controller: UIViewController) -> UIDocumentPickerViewController? {
@@ -256,6 +262,7 @@ struct WorkspaceFeaturesProbeView: View {
                     RecoveringTerminalScreen(recovery: owner)
                         .sheet(isPresented: $runner.showFiles, onDismiss: {
                             if !runner.showFiles { owner.session.files.cancel(); owner.session.files.clearExport() }
+                            runner.fileSheetDidDismiss()
                         }) {
                             RemoteFilesView(model: owner.session.files)
                         }

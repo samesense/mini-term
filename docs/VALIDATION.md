@@ -1,5 +1,31 @@
 # Validation record and acceptance checklist
 
+## Terminal toolbar accessibility update — 2026-11-04
+
+The terminal utilities now use a shared rounded button style with 44-point minimum
+width/height, a visible pressed fill, disabled styling, pointer highlighting,
+standard SF Symbols and native SwiftUI Button/Menu semantics. Utility actions use
+LCARS lavender; Disconnect uses a destructive role and coral. Icon-only labels
+retain spoken names and help text. Increase Contrast strengthens borders.
+
+The connection status is grouped alongside the destination. Compact size classes
+and accessibility text sizes use additional rows; preview selection and its port/
+close controls adapt too. Existing terminal/keyboard safe-area handling is retained.
+
+- **PASS:** signed iPad build and simulator builds, with no source warnings.
+- **PASS:** 28 normal workspace/file/recovery checks and 33 preview checks.
+- **PASS:** 28 workspace checks at 375-point width with accessibility2 text and
+  Increase Contrast, plus 28 at the largest accessibility5 text size. Icon size
+  grows up to 28 points to keep the utility row usable; visible text retains the
+  full requested Dynamic Type size. Compact layout captures were inspected.
+- Normal and compact/accessibility captures were visually inspected; the normal
+  [running toolbar capture](design/terminal-toolbar.png) uses only generated data.
+- The fixture now waits for the Files sheet's actual dismissal before beginning a
+  model-level download, rather than assuming a fixed animation duration.
+- Physical installation/review is pending the iPad being unlocked. The toolbar uses
+  explicit size-class/text-size rows to keep the terminal host stable while UIKit
+  updates keyboard geometry.
+
 ## Physical Mosh startup correction — 2026-11-04
 
 The first user Mosh connection on the iPad failed immediately with a misleading

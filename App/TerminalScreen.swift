@@ -24,6 +24,8 @@ private struct TerminalWorkspace: View {
     var onDisconnect: (() -> Void)?
     @State private var showingFiles = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var keyboardToggleRequest = 0
     @State private var copiedDiagnostics = false
     @AppStorage("keyboard.dualRoleCaps.enabled") private var dualRoleCaps = true
@@ -31,63 +33,41 @@ private struct TerminalWorkspace: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Circle().fill(model.state == .connected ? .green : .orange).frame(width: 7, height: 7)
-                Text("\(model.connection.username)@\(model.connection.host)")
-                    .font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
-                Spacer(minLength: 8)
-                Button { showingFiles = true } label: { Image(systemName: "folder") }
-                    .accessibilityLabel("Browse Mac files").accessibilityIdentifier("terminal.files")
-                    .disabled(model.state != .connected || !model.sshToolsAvailable)
-                if !model.state.isFinished {
-                    Text(model.usesMosh && model.state == .connected
-                         ? (model.moshWaitingForNetwork ? "Mosh · Waiting for network…" : model.sshToolsAvailable ? "Mosh" : "Mosh · SSH tools offline") : model.state.label)
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Button {
-                    keyboardToggleRequest += 1
-                } label: {
-                    Image(systemName: "keyboard")
-                }
-                .accessibilityLabel("Show or hide keyboard")
-                .accessibilityIdentifier("terminal.keyboard")
-                .disabled(model.state.isFinished || preview.showing)
-                if preview.browser == nil && !preview.showing {
-                    Button { preview.beginEditing() } label: { Image(systemName: "globe") }
-                        .accessibilityLabel("Open website preview")
-                        .accessibilityIdentifier("terminal.preview")
-                        .disabled(model.state != .connected || !model.sshToolsAvailable)
-                }
-                Menu {
-                    Button {
-                        UIPasteboard.general.string = AppDiagnostics.text(model.diagnostics)
-                        copiedDiagnostics = true
-                    } label: {
-                        Label(copiedDiagnostics ? "Copied diagnostics" : "Copy diagnostics", systemImage: copiedDiagnostics ? "checkmark" : "doc.on.doc")
+            Group {
+                if horizontalSizeClass == .compact || typeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 8) {
+                        connectionSummary
+                        terminalActions.frame(maxWidth: .infinity, alignment: .trailing)
                     }
-                } label: { Image(systemName: "ellipsis").frame(minWidth: 36, minHeight: 36) }
-                .accessibilityLabel("Connection options")
-                Button(model.state.isFinished ? "Done" : "Disconnect") {
-                    onDisconnect?(); model.disconnect(); dismiss()
-                }.font(.callout).accessibilityIdentifier("terminal.disconnect")
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
+                } else {
+                    HStack(spacing: 16) {
+                        connectionSummary
+                        Spacer(minLength: 0)
+                        terminalActions
+                    }
+                }
+            }.padding(.horizontal, 12).padding(.vertical, 8)
             if let recoveryMessage {
                 HStack {
                     Text(recoveryMessage).font(.caption)
                     Spacer()
-                    Button("Stop retrying") { onStopRetry?() }.font(.caption)
+                    Button("Stop retrying") { onStopRetry?() }.buttonStyle(WorkspaceButtonStyle())
                 }.padding(.horizontal, 12).padding(.bottom, 8)
             }
             if preview.showing || preview.browser != nil {
-                HStack {
-                    Picker("Workspace", selection: $preview.showing) {
-                        Text("Terminal").tag(false)
-                        Text("Preview").tag(true)
-                    }.pickerStyle(.segmented).frame(maxWidth: 280)
-                    Spacer(minLength: 8)
-                    Button("Port \(String(preview.selectedPort))") { preview.beginEditing() }.disabled(!preview.connected)
-                    Button { preview.close() } label: { Image(systemName: "xmark") }.accessibilityLabel("Close preview")
+                Group {
+                    if horizontalSizeClass == .compact || typeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 8) {
+                            workspacePicker
+                            previewActions.frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                    } else {
+                        HStack {
+                            workspacePicker
+                            Spacer(minLength: 8)
+                            previewActions
+                        }
+                    }
                 }.font(.callout).padding(.horizontal, 12).padding(.bottom, 8)
             }
             if model.state.isFinished {
@@ -183,6 +163,115 @@ private struct TerminalWorkspace: View {
                   secondaryButton: .cancel(Text("Cancel")) { model.answerTrust(request, allow: false) })
         }
         .onDisappear { model.disconnect() }
+    }
+
+    private var connectionSummary: some View {
+        HStack(spacing: 8) {
+            Circle().fill(model.state == .connected ? .green : .orange)
+                .frame(width: 7, height: 7).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(model.connection.username)@\(model.connection.host)")
+                    .font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+                if !model.state.isFinished {
+                    Text(model.usesMosh && model.state == .connected
+                         ? (model.moshWaitingForNetwork ? "Mosh · Waiting for network…" : model.sshToolsAvailable ? "Mosh" : "Mosh · SSH tools offline") : model.state.label)
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }.frame(minWidth: 100, alignment: .leading).accessibilityElement(children: .combine)
+    }
+
+    private var workspacePicker: some View {
+        Picker("Workspace", selection: $preview.showing) {
+            Text("Terminal").tag(false)
+            Text("Preview").tag(true)
+        }.pickerStyle(.segmented).frame(maxWidth: 280, minHeight: 44)
+    }
+
+    private var previewActions: some View {
+        HStack(spacing: 8) {
+            Button("Port \(String(preview.selectedPort))") { preview.beginEditing() }
+                .disabled(!preview.connected)
+            Button { preview.close() } label: { WorkspaceSymbolLabel("Close preview", systemImage: "xmark") }
+                .help("Close preview")
+        }.buttonStyle(WorkspaceButtonStyle())
+    }
+
+    private var terminalActions: some View {
+        Group {
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .trailing, spacing: 8) {
+                    HStack(spacing: 8) { utilityActions }
+                    disconnectButton
+                }
+            } else {
+                HStack(spacing: 8) { utilityActions; disconnectButton }
+            }
+        }.buttonStyle(WorkspaceButtonStyle())
+    }
+
+    @ViewBuilder private var utilityActions: some View {
+        Button { showingFiles = true } label: { WorkspaceSymbolLabel("Browse Mac files", systemImage: "folder") }
+            .accessibilityIdentifier("terminal.files").help("Browse Mac files")
+            .disabled(model.state != .connected || !model.sshToolsAvailable)
+        Button { keyboardToggleRequest += 1 } label: { WorkspaceSymbolLabel("Show or hide keyboard", systemImage: "keyboard") }
+            .accessibilityIdentifier("terminal.keyboard").help("Show or hide keyboard")
+            .disabled(model.state.isFinished || preview.showing)
+        if preview.browser == nil && !preview.showing {
+            Button { preview.beginEditing() } label: { WorkspaceSymbolLabel("Open website preview", systemImage: "globe") }
+                .accessibilityIdentifier("terminal.preview").help("Open website preview")
+                .disabled(model.state != .connected || !model.sshToolsAvailable)
+        }
+        Menu {
+            Button {
+                UIPasteboard.general.string = AppDiagnostics.text(model.diagnostics)
+                copiedDiagnostics = true
+            } label: {
+                Label(copiedDiagnostics ? "Copied diagnostics" : "Copy diagnostics", systemImage: copiedDiagnostics ? "checkmark" : "doc.on.doc")
+            }
+        } label: { WorkspaceSymbolLabel("Connection options", systemImage: "ellipsis") }
+            .help("Connection options").accessibilityIdentifier("terminal.options")
+    }
+
+    private var disconnectButton: some View {
+        Button(model.state.isFinished ? "Done" : "Disconnect", role: model.state.isFinished ? nil : .destructive) {
+            onDisconnect?(); model.disconnect(); dismiss()
+        }.accessibilityIdentifier("terminal.disconnect")
+    }
+}
+
+/// Symbols grow with text, with a cap that keeps the utility row usable at the
+/// largest accessibility sizes. Visible text buttons retain full Dynamic Type.
+private struct WorkspaceSymbolLabel: View {
+    let title: String
+    let systemImage: String
+    @ScaledMetric(relativeTo: .body) private var symbolSize: CGFloat = 18
+    init(_ title: String, systemImage: String) { self.title = title; self.systemImage = systemImage }
+    var body: some View {
+        Label(title, systemImage: systemImage).labelStyle(.iconOnly)
+            .font(.system(size: min(symbolSize, 28), weight: .medium))
+    }
+}
+
+/// Standard SwiftUI controls retain their semantics, focus, and menu behavior;
+/// the shared appearance gives each label a real minimum 44-point hit region.
+private struct WorkspaceButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorSchemeContrast) private var contrast
+    func makeBody(configuration: Configuration) -> some View {
+        let tint = configuration.role == .destructive ? LCARS.coral : LCARS.lavender
+        configuration.label
+            .font(.body.weight(.medium))
+            .padding(.horizontal, 12)
+            .frame(minWidth: 44, minHeight: 44)
+            .foregroundStyle(isEnabled ? tint : Color.secondary)
+            .background(tint.opacity(isEnabled ? (configuration.isPressed ? 0.26 : 0.10) : 0.04), in: RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(tint.opacity(isEnabled ? (contrast == .increased ? 0.75 : 0.25) : 0.10), lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .hoverEffect(.highlight)
     }
 }
 
