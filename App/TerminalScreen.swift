@@ -8,13 +8,21 @@ import UIKit
 struct TerminalScreen: View {
     @ObservedObject var model: TerminalSessionModel
     var onReconnect: (() -> Void)? = nil
-    var body: some View { TerminalWorkspace(model: model, preview: model.preview, onReconnect: onReconnect) }
+    var recoveryMessage: String? = nil
+    var onStopRetry: (() -> Void)? = nil
+    var onDisconnect: (() -> Void)? = nil
+    var body: some View { TerminalWorkspace(model: model, preview: model.preview, onReconnect: onReconnect,
+                                            recoveryMessage: recoveryMessage, onStopRetry: onStopRetry, onDisconnect: onDisconnect) }
 }
 
 private struct TerminalWorkspace: View {
     @ObservedObject var model: TerminalSessionModel
     @ObservedObject var preview: PreviewModel
     var onReconnect: (() -> Void)?
+    var recoveryMessage: String?
+    var onStopRetry: (() -> Void)?
+    var onDisconnect: (() -> Void)?
+    @State private var showingFiles = false
     @Environment(\.dismiss) private var dismiss
     @State private var keyboardToggleRequest = 0
     @State private var copiedDiagnostics = false
@@ -28,6 +36,9 @@ private struct TerminalWorkspace: View {
                 Text("\(model.connection.username)@\(model.connection.host)")
                     .font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 8)
+                Button { showingFiles = true } label: { Image(systemName: "folder") }
+                    .accessibilityLabel("Browse Mac files").accessibilityIdentifier("terminal.files")
+                    .disabled(model.state != .connected)
                 if !model.state.isFinished {
                     Text(model.state.label).font(.caption).foregroundStyle(.secondary)
                 }
@@ -55,10 +66,17 @@ private struct TerminalWorkspace: View {
                 } label: { Image(systemName: "ellipsis").frame(minWidth: 36, minHeight: 36) }
                 .accessibilityLabel("Connection options")
                 Button(model.state.isFinished ? "Done" : "Disconnect") {
-                    model.disconnect(); dismiss()
+                    onDisconnect?(); model.disconnect(); dismiss()
                 }.font(.callout).accessibilityIdentifier("terminal.disconnect")
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
+            if let recoveryMessage {
+                HStack {
+                    Text(recoveryMessage).font(.caption)
+                    Spacer()
+                    Button("Stop retrying") { onStopRetry?() }.font(.caption)
+                }.padding(.horizontal, 12).padding(.bottom, 8)
+            }
             if preview.showing || preview.browser != nil {
                 HStack {
                     Picker("Workspace", selection: $preview.showing) {
@@ -83,12 +101,13 @@ private struct TerminalWorkspace: View {
             }
             ZStack {
                 NativeTerminal(model: model, keyboardToggleRequest: keyboardToggleRequest, dualRoleCaps: dualRoleCaps,
-                               source: DualRoleKeySource(rawValue: dualRoleSource) ?? .capsLock, inputActive: !preview.showing)
+                               source: DualRoleKeySource(rawValue: dualRoleSource) ?? .capsLock,
+                               inputActive: !preview.showing && !showingFiles && !preview.editingPort)
                     .opacity(preview.showing ? 0 : 1)
                     .allowsHitTesting(!preview.showing)
                     .accessibilityHidden(preview.showing)
                 if preview.showing || preview.browser != nil {
-                    PreviewPane(model: preview).background(Color(white: 0.13))
+                    PreviewPane(model: preview, inputActive: !showingFiles && !preview.editingPort).background(Color(white: 0.13))
                         .opacity(preview.showing ? 1 : 0)
                         .allowsHitTesting(preview.showing)
                         .accessibilityHidden(!preview.showing)
@@ -108,6 +127,9 @@ private struct TerminalWorkspace: View {
                         TextField("Port", text: $preview.portText).keyboardType(.numberPad)
                             .accessibilityIdentifier("preview.port")
                         Toggle("Use HTTPS", isOn: $preview.useHTTPS)
+                        TextField("Path, e.g. /dashboard", text: $preview.pathText)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .accessibilityIdentifier("preview.path")
                         if preview.useHTTPS {
                             Text("The iPad must trust the certificate for \(PreviewAddress.host).")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -115,13 +137,42 @@ private struct TerminalWorkspace: View {
                         Text("Start the server in the terminal. Its localhost port will be reached through SSH.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
+                    if !preview.shortcuts.isEmpty {
+                        Section("Saved previews") {
+                            ForEach(preview.shortcuts) { shortcut in
+                                HStack {
+                                    Button { preview.openShortcut(shortcut) } label: {
+                                        VStack(alignment: .leading) {
+                                            Text(shortcut.name)
+                                            Text("\(String(shortcut.port))\(shortcut.path)").font(.caption).foregroundStyle(.secondary)
+                                        }
+                                    }.disabled(!preview.connected)
+                                    Spacer()
+                                    Menu {
+                                        Button("Edit") { preview.editShortcut(shortcut) }
+                                        Button("Delete shortcut", role: .destructive) { preview.removeShortcut(shortcut) }
+                                    } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Options for \(shortcut.name)")
+                                }
+                            }
+                        }
+                    }
+                    Section("Save this preview") {
+                        TextField("Shortcut name", text: $preview.shortcutName)
+                        Button("Save shortcut") { preview.saveShortcut() }.disabled(preview.shortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Text("Stored on this iPad for this connection. Avoid putting passwords or access tokens in saved URLs.").font(.caption).foregroundStyle(.secondary)
+                    }
                     if let message = preview.message { Text(message).foregroundStyle(.orange) }
                     Button("Open preview") { preview.open() }.disabled(!preview.connected)
                         .accessibilityIdentifier("preview.open")
                 }
                 .navigationTitle("Website preview").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { preview.editingPort = false } } }
-            }.preferredColorScheme(.dark).tint(LCARS.lavender).presentationDetents([.medium])
+            }.preferredColorScheme(.dark).tint(LCARS.lavender).presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showingFiles, onDismiss: {
+            if !showingFiles { model.files.cancel(); model.files.clearExport() }
+        }) {
+            RemoteFilesView(model: model.files)
         }
         .alert(item: $model.trustRequest) { request in
             Alert(title: Text("Trust this Mac?"),

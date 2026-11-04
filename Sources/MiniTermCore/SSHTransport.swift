@@ -39,6 +39,8 @@ public final class SSHTransport: @unchecked Sendable {
     private var started = false
     private var startupCommand: String?
     private var preview: PreviewForwarder?
+    private var sftp: SFTPHandler?
+    private var liveness: LivenessProbe?
     private var pausedOutput: [Data] = []
     private var pausedOutputBytes = 0
 
@@ -138,6 +140,52 @@ public final class SSHTransport: @unchecked Sendable {
         }
     }
 
+    /// Reuse the authenticated socket; SFTP never sends commands through the PTY.
+    public func startSFTP() -> EventLoopFuture<SFTPClient> {
+        loop.flatSubmit { [self] in
+            guard state == .connected, let parent else { return loop.makeFailedFuture(SFTPError.disconnected) }
+            sftp?.fail(SFTPError.disconnected)
+            let handler = SFTPHandler(loop: loop)
+            sftp = handler
+            do {
+                let ssh = try parent.pipeline.syncOperations.handler(type: NIOSSHHandler.self)
+                let promise = loop.makePromise(of: (any Channel).self)
+                ssh.createChannel(promise, channelType: .session) { channel, _ in
+                    channel.eventLoop.makeCompletedFuture { try channel.pipeline.syncOperations.addHandler(handler) }
+                }
+                promise.futureResult.whenFailure { handler.fail($0) }
+                return handler.ready.futureResult
+            } catch { handler.fail(error); return handler.ready.futureResult }
+        }
+    }
+
+    /// Opening an empty session proves a round trip without executing a shell command.
+    /// Used after foreground/network restoration to detect half-open suspended sockets.
+    public func checkAlive() -> EventLoopFuture<Void> {
+        loop.flatSubmit { [self] in
+            guard state == .connected, let parent else { return loop.makeFailedFuture(TerminalError.cancelled) }
+            if let liveness { return liveness.promise.futureResult }
+            let probe = LivenessProbe(loop: loop)
+            liveness = probe
+            probe.timeout = loop.scheduleTask(in: .seconds(8)) { [weak self] in
+                if probe.finish(.failure(TerminalError.timedOut)) { self?.fail(TerminalError.timedOut) }
+            }
+            do {
+                let ssh = try parent.pipeline.syncOperations.handler(type: NIOSSHHandler.self)
+                let promise = loop.makePromise(of: (any Channel).self)
+                ssh.createChannel(promise, channelType: .session) { channel, _ in channel.eventLoop.makeSucceededVoidFuture() }
+                promise.futureResult.whenComplete { outcome in
+                    if case .success(let channel) = outcome { channel.close(promise: nil) }
+                    // A channel rejection still proves SSH is responsive. Transport
+                    // closure resolves this probe separately as a disconnection.
+                    _ = probe.finish(.success(()))
+                    if self.liveness === probe { self.liveness = nil }
+                }
+            } catch { _ = probe.finish(.failure(error)); liveness = nil }
+            return probe.promise.futureResult
+        }
+    }
+
     private func openForward(host: String, port: Int, initialize: ForwardInitializer) -> EventLoopFuture<any Channel> {
         guard state == .connected, let parent else { return loop.makeFailedFuture(PreviewError.disconnected) }
         do {
@@ -223,6 +271,8 @@ public final class SSHTransport: @unchecked Sendable {
         transition(final)
         pending.removeAll()
         preview?.stop(); preview = nil
+        sftp?.fail(SFTPError.disconnected); sftp = nil
+        _ = liveness?.finish(.failure(TerminalError.cancelled)); liveness = nil
         child?.close(promise: nil); child = nil
         parent?.close(promise: nil); parent = nil
     }
@@ -262,6 +312,18 @@ public final class SSHTransport: @unchecked Sendable {
     private func applyReadPressure(_ channel: any Channel) {
         channel.setOption(ChannelOptions.autoRead, value: !readPaused).whenFailure { [weak self] in self?.fail($0) }
         if !readPaused { channel.read() }
+    }
+}
+
+private final class LivenessProbe: @unchecked Sendable {
+    let promise: EventLoopPromise<Void>
+    var timeout: Scheduled<Void>?
+    private var completed = false
+    init(loop: any EventLoop) { promise = loop.makePromise() }
+    func finish(_ result: Result<Void, any Error>) -> Bool {
+        guard !completed else { return false }; completed = true
+        timeout?.cancel(); timeout = nil; promise.completeWith(result)
+        return true
     }
 }
 

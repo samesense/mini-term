@@ -1,5 +1,21 @@
 # Validation record and acceptance checklist
 
+## Foreground recovery, saved previews and SFTP — 2026-11-04
+
+Implemented on `codex/reconnect-previews-files`. The earlier keyboard/layer fixes are retained in a separate commit on this branch; physical acceptance of those fixes remains pending.
+
+- **PASS:** **79 core tests in 10 suites**, including bounded retry policy/security stops, origin-safe shortcut validation and storage bounds, fragmented SFTP framing/attributes, malformed statuses/IDs, request limits, subsystem timeout and close cleanup.
+- **PASS:** real encrypted SSH/SFTP interoperability with macOS's OpenSSH `sftp-server`, using generated keys and temporary fixtures: directory/stat, 350 KB binary upload/download, exclusive 0600 creation, preserved existing local/remote destinations, symbolic links, regular-file checks, in-flight download cancellation with partial cleanup, continued terminal liveness, independent paused-PTY traffic and rejected SFTP isolation.
+- **PASS:** **28 simulator workspace checks** using the real app models, Ghostty and WebKit with generated SSH/HTTP/SFTP fixtures. Coverage includes healthy-wake socket retention; new-model recovery after simulated suspension/disconnect; applied preview/path and hidden-preview restoration; shortcut save/edit/delete/persistence; browsing/upload/overwrite refusal/download; native Files picker mounting/cancellation and staging cleanup; retry cancellation; manual reconnect after stopping; and no automatic transfer replay.
+- **PASS:** **33 existing preview/workspace regressions**, with zero direct-listener requests. The fixture's full-screen presentation now stays stable while replacing child sessions, matching the production recovery host. Swapping the full-screen-cover item itself could transiently mount/dismiss the incoming controller; a deliberately closed model now correctly refuses to start later.
+- **PASS:** **19 reconnect/model-lifetime checks**, including closure before first appearance, manual retry availability after cancelling an idle attempt, fresh transports/surfaces and retirement of old models.
+- **PASS:** simulator and unsigned iPad target builds. Only the usual AppIntents metadata-skipped build warning was emitted; app/core compilation produced no source warnings.
+- The file-browser screenshot in `docs/design/files-browser.png` uses only fictional/generated simulator data. Native export dismissal cleanup is guarded against a stale dismissal after reopening, and staging remains alive while the export picker covers the browser.
+
+Physical-iPad acceptance is pending because the device is unavailable: actual sleep/lock/Wi-Fi transitions, native file-provider selection/export destinations, sustained large transfers/background interruption, and the earlier runtime log comparison. Simulator scene/network events are synthetic; this does not establish a universal background-networking guarantee. Shortcuts are local per connection and do not join iCloud history sync. SFTP is version 3 with individual regular-file transfers; no overwrite/delete/rename/folder-transfer/resume capability is claimed.
+
+Repeat with `swift test`, `Scripts/test_workspace_features.py SIMULATOR_UDID`, `Scripts/test_preview.py SIMULATOR_UDID` and `Scripts/test_session_features.py SIMULATOR_UDID`. New code and limits are described in [usage](USAGE.md), [previews](PREVIEWS.md) and [files](FILES.md).
+
 ## Keyboard/animation log investigation — 2026-11-03
 
 The paired iPad's live Console stream showed repeated QuartzCore `cannot add handler to 0 from 0 - dropping` errors, one AnimationKit `LittleGlowView` transform-decomposition fault, and WebKit/RunningBoard process-cleanup errors. A fresh search found no MiniTerm crash reports. Framework attribution alone does not prove those messages are harmless or that MiniTerm caused them.

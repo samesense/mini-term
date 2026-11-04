@@ -50,20 +50,24 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
     let connection: SSHConnection
     let terminalSession: InMemoryTerminalSession
     let preview: PreviewModel
+    let files: RemoteFilesModel
     @Published private(set) var state: ConnectionState = .idle
     @Published var trustRequest: HostTrustRequest?
     var onConnected: (() -> Void)?
     private(set) var diagnostics: SessionDiagnostics
+    private(set) var lastFailure: ConnectionFailure?
     private let seed: Data
     private let keychain = KeychainStore()
     private let bridge: TerminalBridge
     private var transport: SSHTransport?
     private var pendingTrust: HostTrustRequest?
+    private var explicitlyClosed = false
 
     init(connection: SSHConnection, seed: Data, diagnostics: SessionDiagnostics? = nil) {
         self.connection = connection
         self.seed = seed
         preview = PreviewModel(connection: connection)
+        files = RemoteFilesModel()
         self.diagnostics = diagnostics ?? SessionDiagnostics(usesTmux: connection.tmuxSession != nil)
         let bridge = TerminalBridge()
         self.bridge = bridge
@@ -72,7 +76,7 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
     }
 
     func start() {
-        guard transport == nil else { return }
+        guard transport == nil, !explicitlyClosed else { return }
         diagnostics.beginAttempt()
         let session = terminalSession
         let transport = SSHTransport(callbacks: .init(state: { [weak self] state in
@@ -82,10 +86,12 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
         }, failure: { [weak self] failure in
             DispatchQueue.main.async {
                 self?.diagnostics.record(.failed(""), failure: failure)
+                self?.lastFailure = failure
             }
         }))
         self.transport = transport
         preview.attach(transport)
+        files.attach(transport)
         bridge.attach(transport)
         transport.connect(to: connection, seed: seed) { [weak self] key, completion in
             DispatchQueue.main.async {
@@ -107,14 +113,23 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
     }
 
     func disconnect() {
+        explicitlyClosed = true
         preview.disconnected()
+        files.disconnected()
         if let request = pendingTrust {
             pendingTrust = nil
             trustRequest = nil
             request.completion(.failure(TerminalError.cancelled))
         }
-        transport?.disconnect()
+        if let transport { transport.disconnect() }
+        else if !state.isFinished { didChangeState(.disconnected) }
         bridge.detach() // Break bridge → transport → output callback → session → bridge.
+    }
+
+    func checkConnectionAfterWake() async -> Bool {
+        guard let transport, state == .connected else { return false }
+        do { try await transport.checkAlive().get(); return state == .connected }
+        catch { return false }
     }
 
     func answerTrust(_ request: HostTrustRequest, allow: Bool) {
@@ -150,8 +165,8 @@ final class TerminalSessionModel: ObservableObject, Identifiable {
     private func didChangeState(_ state: ConnectionState) {
         self.state = state
         diagnostics.record(state)
-        if state == .connected { preview.connectionReady(); onConnected?() }
-        if state.isFinished { preview.disconnected(); bridge.detach() }
+        if state == .connected { preview.connectionReady(); files.connectionReady(); onConnected?() }
+        if state.isFinished { preview.disconnected(); files.disconnected(); bridge.detach() }
         if state.isFinished, let request = pendingTrust {
             pendingTrust = nil
             trustRequest = nil

@@ -10,6 +10,10 @@
 		5914A52492631577D92E4BC1 = { isa = PBXBuildFile; fileRef = EABFD7FC46C4DE0B3906BC40; };
 		B06B8EF972B8EC7366587BFC = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreviewModel.swift"; sourceTree = "<group>"; };
 		1A66A4B91025BE107C86BB66 = { isa = PBXBuildFile; fileRef = B06B8EF972B8EC7366587BFC; };
+		FE2D023EC7C73DFC0C6DD004 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteFiles.swift"; sourceTree = "<group>"; };
+		039FB2D221C150AD241F5B6F = { isa = PBXBuildFile; fileRef = FE2D023EC7C73DFC0C6DD004; };
+		A8099942E33D2ACF64DF2488 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionRecovery.swift"; sourceTree = "<group>"; };
+		EB5E64241DAD0C287C958EE2 = { isa = PBXBuildFile; fileRef = A8099942E33D2ACF64DF2488; };
 		A37ADDCFF4D7A3A3791E999F = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalScreen.swift"; sourceTree = "<group>"; };
 		8A321AD76B3C185A4B854CA5 = { isa = PBXBuildFile; fileRef = A37ADDCFF4D7A3A3791E999F; };
 		881DC221C891FB159FA21F64 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TerminalSessionModel.swift"; sourceTree = "<group>"; };
@@ -17,7 +21,7 @@
 		05529D7BAF9BE1F1AD75AA78 = { isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D0ADC22F3C046CC76298F620 = { isa = PBXBuildFile; fileRef = 05529D7BAF9BE1F1AD75AA78; };
 		A172CEDCAE47474B615C54D5 = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MiniTerm.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A5660BF89DD2D657048780AB = { isa = PBXGroup; children = (E5769970B1649C68738BEB5C, EABFD7FC46C4DE0B3906BC40, B06B8EF972B8EC7366587BFC, A37ADDCFF4D7A3A3791E999F, 881DC221C891FB159FA21F64, 05529D7BAF9BE1F1AD75AA78,); path = App; sourceTree = "<group>"; };
+		A5660BF89DD2D657048780AB = { isa = PBXGroup; children = (E5769970B1649C68738BEB5C, EABFD7FC46C4DE0B3906BC40, B06B8EF972B8EC7366587BFC, FE2D023EC7C73DFC0C6DD004, A8099942E33D2ACF64DF2488, A37ADDCFF4D7A3A3791E999F, 881DC221C891FB159FA21F64, 05529D7BAF9BE1F1AD75AA78,); path = App; sourceTree = "<group>"; };
 		4EDC8BFAFC6BD936B849F38C = { isa = PBXGroup; children = (A172CEDCAE47474B615C54D5,); name = Products; sourceTree = "<group>"; };
 		97A63A01E61FD439E8760B8E = { isa = PBXGroup; children = (A5660BF89DD2D657048780AB, 4EDC8BFAFC6BD936B849F38C,); sourceTree = "<group>"; };
 		A811B7AECA8864E174EAF047 = { isa = XCLocalSwiftPackageReference; relativePath = Vendor/GhosttyAdapter; };
@@ -26,7 +30,7 @@
 		5F51DE278F97186A35470959 = { isa = PBXBuildFile; productRef = 5CD53CD6DE9A98E20B6452C3; };
 		B2B86715669D70D7579C6E80 = { isa = XCSwiftPackageProductDependency; package = 552AFB5EC1B6A8F3B1B9D25D; productName = MiniTermCore; };
 		020D02197683BE45A1EB5D74 = { isa = PBXBuildFile; productRef = B2B86715669D70D7579C6E80; };
-		CAF85B0888D78F1F83771A07 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (4ECB522855E2C4CCFD6E8654, 5914A52492631577D92E4BC1, 1A66A4B91025BE107C86BB66, 8A321AD76B3C185A4B854CA5, 0C7067578CE57E4076610411,); runOnlyForDeploymentPostprocessing = 0; };
+		CAF85B0888D78F1F83771A07 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (4ECB522855E2C4CCFD6E8654, 5914A52492631577D92E4BC1, 1A66A4B91025BE107C86BB66, 039FB2D221C150AD241F5B6F, EB5E64241DAD0C287C958EE2, 8A321AD76B3C185A4B854CA5, 0C7067578CE57E4076610411,); runOnlyForDeploymentPostprocessing = 0; };
 		CAFD6B725820BD8EFB592E21 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (020D02197683BE45A1EB5D74, 5F51DE278F97186A35470959,); runOnlyForDeploymentPostprocessing = 0; };
 		E89B30AA1DC30A6AD8C34610 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (D0ADC22F3C046CC76298F620,); runOnlyForDeploymentPostprocessing = 0; };
 		433548979C024CC63B5F3B8D = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_VERSION = 6.0; DEBUG_INFORMATION_FORMAT = dwarf; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; ENABLE_TESTABILITY = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; ONLY_ACTIVE_ARCH = YES; }; name = Debug; };

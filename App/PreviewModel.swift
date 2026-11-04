@@ -11,6 +11,9 @@ final class PreviewModel: ObservableObject {
     @Published var editingPort = false
     @Published var portText: String
     @Published var useHTTPS: Bool
+    @Published var pathText = "/"
+    @Published var shortcutName = ""
+    @Published private(set) var shortcuts: [PreviewShortcut] = []
     @Published private(set) var selectedPort: Int
     @Published private(set) var browser: PreviewBrowser?
     @Published private(set) var message: String?
@@ -20,7 +23,10 @@ final class PreviewModel: ObservableObject {
     private let preferenceKey: String
     private var generation = UUID()
     private var restoreOnConnect = false
+    private var wasOpen = false
     private var selectedHTTPS: Bool
+    private(set) var selectedPath = "/"
+    private var editingShortcutID: UUID?
 
     init(connection: SSHConnection) {
         preferenceKey = "preview.port." + ConnectionProfile(connection).id
@@ -29,12 +35,20 @@ final class PreviewModel: ObservableObject {
         let secure = UserDefaults.standard.bool(forKey: preferenceKey + ".https")
         selectedPort = port; portText = String(port)
         useHTTPS = secure; selectedHTTPS = secure
+        let savedPath = UserDefaults.standard.string(forKey: preferenceKey + ".path") ?? "/"
+        if PreviewShortcut.validPath(savedPath) { selectedPath = savedPath; pathText = savedPath }
+        if let data = UserDefaults.standard.data(forKey: preferenceKey + ".shortcuts") {
+            shortcuts = (try? PreviewShortcut.decode(data)) ?? []
+        }
     }
 
     func attach(_ transport: SSHTransport) { self.transport = transport }
     func connectionReady() {
         connected = true
-        if restoreOnConnect { restoreOnConnect = false; open() }
+        if restoreOnConnect {
+            let selected = showing
+            restoreOnConnect = false; open(); showing = selected
+        }
     }
     func disconnected() {
         connected = false; transport = nil; generation = UUID(); isStarting = false
@@ -44,13 +58,40 @@ final class PreviewModel: ObservableObject {
     func restore(from old: PreviewModel) {
         selectedPort = old.selectedPort; portText = String(old.selectedPort)
         selectedHTTPS = old.selectedHTTPS; useHTTPS = old.selectedHTTPS
+        selectedPath = old.selectedPath; pathText = old.selectedPath
         showing = old.showing
-        restoreOnConnect = old.showing
+        wasOpen = old.wasOpen
+        restoreOnConnect = old.wasOpen
     }
 
     func beginEditing() {
         portText = String(selectedPort); useHTTPS = selectedHTTPS
+        pathText = selectedPath; shortcutName = ""; editingShortcutID = nil
         message = nil; editingPort = true
+    }
+
+    func editShortcut(_ shortcut: PreviewShortcut) {
+        portText = String(shortcut.port); useHTTPS = shortcut.useHTTPS
+        pathText = shortcut.path; shortcutName = shortcut.name; editingShortcutID = shortcut.id
+        message = nil
+    }
+    func openShortcut(_ shortcut: PreviewShortcut) { editShortcut(shortcut); open() }
+    func saveShortcut() {
+        do {
+            guard let port = Int(portText) else { throw WorkspacePreferenceError.invalidPreview }
+            let entry = try PreviewShortcut(id: editingShortcutID ?? UUID(), name: shortcutName, port: port, useHTTPS: useHTTPS, path: pathText)
+            var next = shortcuts.filter { $0.id != entry.id }
+            guard next.count < 20 else { throw WorkspacePreferenceError.tooManyShortcuts }
+            next.append(entry)
+            UserDefaults.standard.set(try JSONEncoder().encode(next), forKey: preferenceKey + ".shortcuts")
+            shortcuts = next; editingShortcutID = entry.id; message = "Shortcut saved."
+        } catch { message = error.localizedDescription }
+    }
+    func removeShortcut(_ shortcut: PreviewShortcut) {
+        let next = shortcuts.filter { $0.id != shortcut.id }
+        guard let data = try? JSONEncoder().encode(next) else { return }
+        UserDefaults.standard.set(data, forKey: preferenceKey + ".shortcuts"); shortcuts = next
+        if editingShortcutID == shortcut.id { editingShortcutID = nil; shortcutName = "" }
     }
 
     func open() {
@@ -58,20 +99,25 @@ final class PreviewModel: ObservableObject {
             message = PreviewError.invalidPort.localizedDescription; return
         }
         guard connected, let transport else { message = PreviewError.disconnected.localizedDescription; return }
+        guard PreviewShortcut.validPath(pathText) else { message = WorkspacePreferenceError.invalidPreview.localizedDescription; return }
         generation = UUID()
         let request = generation
         browser?.close(); browser = nil
         showing = true; editingPort = false; isStarting = true; message = nil
+        wasOpen = true
         portText = String(port)
         selectedPort = port; selectedHTTPS = useHTTPS
+        selectedPath = pathText
         UserDefaults.standard.set(port, forKey: preferenceKey)
         UserDefaults.standard.set(useHTTPS, forKey: preferenceKey + ".https")
+        UserDefaults.standard.set(selectedPath, forKey: preferenceKey + ".path")
         let secure = useHTTPS
+        let path = selectedPath
         Task { [weak self] in
             do {
                 let tunnel = try await transport.startPreview(remotePort: port).get()
                 guard let self, generation == request, connected else { _ = tunnel.close(); return }
-                browser = PreviewBrowser(tunnel: tunnel, useHTTPS: secure)
+                browser = PreviewBrowser(tunnel: tunnel, useHTTPS: secure, path: path)
                 isStarting = false
             } catch {
                 guard let self, generation == request else { return }
@@ -83,6 +129,7 @@ final class PreviewModel: ObservableObject {
 
     func close() {
         generation = UUID(); restoreOnConnect = false
+        wasOpen = false
         browser?.close(); browser = nil
         showing = false; isStarting = false; message = nil
     }
@@ -100,9 +147,10 @@ final class PreviewBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var observations: [NSKeyValueObservation] = []
     private let origin: URL
 
-    init(tunnel: SSHPreviewTunnel, useHTTPS: Bool = false) {
+    init(tunnel: SSHPreviewTunnel, useHTTPS: Bool = false, path: String = "/") {
         self.tunnel = tunnel
-        origin = URL(string: "\(useHTTPS ? "https" : "http")://\(PreviewAddress.host):\(tunnel.remotePort)/")!
+        let destination = try? PreviewShortcut(name: "Preview", port: tunnel.remotePort, useHTTPS: useHTTPS, path: path)
+        origin = destination?.url(host: PreviewAddress.host) ?? URL(string: "http://\(PreviewAddress.host):\(tunnel.remotePort)/")!
         let store = WKWebsiteDataStore.nonPersistent()
         var proxy = ProxyConfiguration(socksv5Proxy: .hostPort(host: "127.0.0.1", port: .init(rawValue: UInt16(tunnel.proxyPort))!))
         proxy.allowFailover = false
@@ -151,7 +199,11 @@ final class PreviewBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
     }
 
-    var safariURL: URL { URL(string: "\(origin.scheme!)://localhost:\(tunnel.safariPort)/")! }
+    var safariURL: URL {
+        var parts = URLComponents(url: origin, resolvingAgainstBaseURL: false)!
+        parts.host = "localhost"; parts.port = tunnel.safariPort
+        return parts.url!
+    }
     var addressLabel: String { "Mac · \(origin.scheme!)://localhost:\(tunnel.remotePort)" }
     func reload() {
         guard !closed, networkRulesReady else { return }
@@ -241,10 +293,11 @@ struct PreviewWebView: UIViewRepresentable {
 
 struct PreviewPane: View {
     @ObservedObject var model: PreviewModel
+    var inputActive = true
     var body: some View {
         Group {
             if let browser = model.browser {
-                PreviewBrowserPane(browser: browser, inputActive: model.showing).id(ObjectIdentifier(browser))
+                PreviewBrowserPane(browser: browser, inputActive: model.showing && inputActive).id(ObjectIdentifier(browser))
             }
             else if model.isStarting { ProgressView("Opening SSH preview…").frame(maxWidth: .infinity, maxHeight: .infinity) }
             else {

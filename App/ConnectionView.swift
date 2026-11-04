@@ -9,6 +9,7 @@ struct ConnectionView: View {
     @StateObject private var history = ConnectionHistoryModel()
     @ObservedObject private var keyboardDiagnostics = KeyboardEventDiagnostics.shared
     @AppStorage("keyboard.dualRoleCaps.enabled") private var dualRoleCaps = true
+    @AppStorage("connection.autoReconnect") private var autoReconnect = true
     @AppStorage("keyboard.dualRoleCaps.source") private var dualRoleSource = DualRoleKeySource.capsLock.rawValue
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -82,9 +83,7 @@ struct ConnectionView: View {
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .fullScreenCover(item: $session) { model in
-                TerminalScreen(model: model, onReconnect: {
-                    if session?.id == model.id, let next = model.reconnectSession() { session = next }
-                }).id(model.id)
+                RecoveringTerminalScreen(model: model).id(model.id)
             }
             .sheet(isPresented: $showSettings) { settingsSheet }
             .alert("Name connection", isPresented: $showRename) {
@@ -262,6 +261,11 @@ struct ConnectionView: View {
     private var settingsSheet: some View {
         NavigationStack {
             Form {
+                Section {
+                    Toggle("Reconnect after wake or network loss", isOn: $autoReconnect)
+                } header: { Text("Connection") } footer: {
+                    Text("Retries up to six times while MiniTerm is active. Reattaches your tmux session; a plain shell opens a new shell. Commands and file transfers are never replayed.")
+                }
                 Section {
                     Toggle("Dual-role Caps Lock", isOn: $dualRoleCaps)
                         .accessibilityIdentifier("settings.dualRoleCaps")

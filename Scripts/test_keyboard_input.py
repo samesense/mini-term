@@ -17,7 +17,7 @@ def run(*args, **kwargs):
     return subprocess.run(args, check=True, text=True, **kwargs)
 
 
-def run_probe(device, fixture_name="KeyboardAdapterProbe.swift", view_name="KeyboardAdapterProbeView", report_name="keyboard-probe.json", bundle="com.samesense.mini-term.keyboard-probe", capture_name=None):
+def run_probe(device, fixture_name="KeyboardAdapterProbe.swift", view_name="KeyboardAdapterProbeView", report_name="keyboard-probe.json", bundle="com.samesense.mini-term.keyboard-probe", capture_name=None, extra_fixtures=()):
     root = Path(__file__).resolve().parent.parent
     with tempfile.TemporaryDirectory(prefix="mini-term-keyboard-input-", dir="/private/tmp") as directory:
         probe = Path(directory)
@@ -31,7 +31,8 @@ def run_probe(device, fixture_name="KeyboardAdapterProbe.swift", view_name="Keyb
         run(sys.executable, str(probe / "Scripts/generate_project.py"))
         (probe / "App/MiniTermApp.swift").write_text("import SwiftUI\n@main struct ProbeApp: App { var body: some Scene { WindowGroup { " + view_name + "() } } }\n")
         screen = probe / "App/TerminalScreen.swift"
-        screen.write_text(screen.read_text() + "\n" + (root / "Tests" / fixture_name).read_text())
+        fixtures = [root / "Tests" / name for name in (*extra_fixtures, fixture_name)]
+        screen.write_text(screen.read_text() + "\n" + "\n".join(path.read_text() for path in fixtures))
         derived = "/private/tmp/mini-term-keyboard-probe-derived"
         log = Path("/private/tmp/mini-term-keyboard-probe-build.log")
         with log.open("w") as output:

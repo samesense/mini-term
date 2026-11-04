@@ -31,6 +31,10 @@ final class SessionFeaturesProbeController: UIViewController {
     private func runChecks() async {
         verify("action symbols exist on iPadOS", ["doc.on.doc", "pencil", "star", "star.fill", "star.slash"].allSatisfy { UIImage(systemName: $0) != nil })
         let connection = try! SSHConnection(host: "127.0.0.1", username: "private-account", port: 1, tmuxSession: "private-session")
+        let neverStarted = TerminalSessionModel(connection: connection, seed: SSHIdentity.generateSeed())
+        neverStarted.disconnect(); neverStarted.start()
+        verify("closed-before-appearance session cannot start SSH", neverStarted.diagnostics.attempts == 0)
+        verify("cancelled idle session remains manually reconnectable", neverStarted.state.isFinished && neverStarted.reconnectSession() != nil)
         var first: TerminalSessionModel? = TerminalSessionModel(connection: connection, seed: SSHIdentity.generateSeed())
         verify("active/idle model cannot start a duplicate reconnect", first!.reconnectSession() == nil)
         first!.onConnected = {}

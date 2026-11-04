@@ -19,6 +19,7 @@ let package = Package(
             .product(name: "Crypto", package: "swift-crypto"),
         ]),
         .testTarget(name: "MiniTermCoreTests", dependencies: ["MiniTermCore",
+            .product(name: "NIOEmbedded", package: "swift-nio"),
             .product(name: "NIOCore", package: "swift-nio"),
             .product(name: "NIOPosix", package: "swift-nio"),
             .product(name: "NIOSSH", package: "swift-nio-ssh"),

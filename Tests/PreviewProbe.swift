@@ -310,9 +310,21 @@ struct PreviewProbeView: View {
                 if let browser = runner.browser { PreviewWebView(browser: browser) }
             }
         }
-        // Match ConnectionView's production presentation. An outer root VStack can
-        // reserve safe-area space independently of the workspace on a physical iPad.
-        .fullScreenCover(item: $runner.session) { session in TerminalScreen(model: session).id(session.id) }
+        // Keep the presentation stable while replacing a session, like the
+        // production recovery host. Replacing fullScreenCover's item itself can
+        // briefly mount/dismiss the incoming controller before its final attach.
+        .fullScreenCover(isPresented: Binding(get: { runner.session != nil }, set: { if !$0 { runner.session = nil } })) {
+            PreviewProbeWorkspace(runner: runner)
+        }
         .task { await runner.run() }
+    }
+}
+
+private struct PreviewProbeWorkspace: View {
+    @ObservedObject var runner: PreviewProbeRunner
+    var body: some View {
+        ZStack {
+            if let session = runner.session { TerminalScreen(model: session).id(session.id) }
+        }
     }
 }
