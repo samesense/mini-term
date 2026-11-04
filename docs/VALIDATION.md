@@ -17,8 +17,11 @@ Homebrew Mosh server; a UDP listener existed on the expected LAN interface.
   Regression coverage verifies that early engine/locale errors never blame UDP.
 - **PASS:** signed build installed and opened on the physical iPad. The user
   confirmed that the corrected app connects and shows Mosh against the Mac’s
-  Homebrew server. No Mac firewall settings were changed. Lock/unlock and input
-  acceptance testing is separate and still in progress.
+  Homebrew server. No Mac firewall settings were changed.
+- **USER PASS on physical iPad:** Ctrl+C interrupts `sleep 30`; after locking for
+  ten seconds and unlocking, input works and `echo $$` reports the same shell PID.
+  This is a short same-network lock/unlock check. Longer suspension, Wi-Fi/VPN
+  transitions, rendering/rotation and tools recovery still need separate testing.
 
 Repeat the on-device capability check with
 `python3 Scripts/test_preview_device.py DEVICE_UDID --fixture mosh-locale`.
