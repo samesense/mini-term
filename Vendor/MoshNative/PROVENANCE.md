@@ -27,7 +27,7 @@ Local changes to upstream:
 - `terminaldisplayinit_ios.cc` removes unused curses includes; the upstream iOS
   initializer already uses fixed xterm capabilities without curses calls.
 - `NativeClient.cc` is a new embedding frontend using upstream state/crypto. It
-  uses a dedicated worker, thread-local UTF-8 locale and `poll`, with no process
+  uses a dedicated worker, thread-local Darwin `UTF-8` locale and `poll`, with no process
   signal installation, stdio replacement, `exit`, suspension or job-control code.
 - Native producer input is bounded to 1 MiB; unacknowledged input is drained in
   order with a 64 KiB protocol-history cap. Output pause stops rendering diffs
@@ -46,3 +46,8 @@ so Clang can verify its `[[noreturn]]` contract. The native target suppresses on
 `-Wshorten-64-to-32` for upstream's integer-width conversions. Swift and other C++
 diagnostics remain enabled. Build inputs explicitly list translation units; proto
 and `.inc` inputs are retained as source/header material rather than build actions.
+
+Physical iPadOS validation confirmed `newlocale("en_US.UTF-8")` is unavailable,
+while Darwin’s encoding-only `newlocale("UTF-8")` succeeds. The native worker uses
+the latter. Return codes distinguish UTF-8 initialization, engine failure, UDP
+startup timeout and cancellation so an initialization bug cannot blame the firewall.

@@ -30,7 +30,7 @@ public struct ConnectionFailure: Equatable, Sendable {
             }
         case let mosh as MoshError:
             switch mosh {
-            case .bootstrap, .invalidBootstrap, .udpUnavailable: kind = .configuration
+            case .bootstrap, .invalidBootstrap, .udpUnavailable, .localeUnavailable: kind = .configuration
             case .inputOverflow: kind = .inputOverflow
             case .engine: kind = .transport
             }

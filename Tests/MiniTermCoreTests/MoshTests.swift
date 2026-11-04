@@ -36,6 +36,13 @@ private func eventually(_ condition: @escaping @Sendable () -> Bool) async throw
 }
 
 struct MoshTests {
+    @Test func earlyEngineFailuresDoNotBlameUDPConnectivity() {
+        #expect(MoshTransport.nativeFailure(0) == nil)
+        #expect(MoshTransport.nativeFailure(2) == nil)
+        if case .engine? = MoshTransport.nativeFailure(1) {} else { Issue.record("Engine failure was misclassified") }
+        if case .udpUnavailable? = MoshTransport.nativeFailure(3) {} else { Issue.record("UDP timeout was misclassified") }
+        if case .localeUnavailable? = MoshTransport.nativeFailure(4) {} else { Issue.record("Locale failure was misclassified") }
+    }
     @Test func bootstrapStrictlyParsesAndRedactsSecrets() throws {
         let b = try MoshBootstrap(output: bootstrapOutput(), ip: "127.0.0.1")
         #expect(b.port == 60001)

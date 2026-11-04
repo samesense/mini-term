@@ -51,8 +51,10 @@ void mt_mosh_stop(MTMosh *c) { if(c) c->stopped=true; }
 void mt_mosh_destroy(MTMosh *c) { delete c; }
 int mt_mosh_run(MTMosh *c, void *ctx, MTMoshOutput output, MTMoshStatus status) {
   if (!c || !output || !status) return 1;
-  locale_t utf8 = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", nullptr);
-  if (!utf8) return 1;
+  // Physical iPadOS ships Darwin's encoding locale, not macOS's regional
+  // en_US.UTF-8 locale data. Keep this thread-local; do not change app locale.
+  locale_t utf8 = newlocale(LC_CTYPE_MASK, "UTF-8", nullptr);
+  if (!utf8) return 4;
   locale_t previous = uselocale(utf8);
   int result = 1;
   try {
@@ -77,7 +79,7 @@ int mt_mosh_run(MTMosh *c, void *ctx, MTMoshOutput output, MTMoshStatus status) 
       const auto now=std::chrono::steady_clock::now();
       if(c->stopped && !shutdown) { shutdown=true; stopping=now; network.start_shutdown(); }
       if(shutdown && now-stopping > std::chrono::seconds(1)) { result=2; break; }
-      if(!connected && now-started > std::chrono::seconds(15)) break;
+      if(!connected && now-started > std::chrono::seconds(15)) { result=3; break; }
       if(connected && !stalled && now-lastPacket > std::chrono::seconds(3)) { stalled=true; status(ctx,2); }
       {
         std::lock_guard<std::mutex> lock(c->mutex);

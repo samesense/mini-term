@@ -33,7 +33,6 @@ public final class MoshTransport: TerminalTransport, @unchecked Sendable {
         deinit { mt_mosh_destroy(native) }
         func run() {
             let context = Unmanaged.passUnretained(self).toOpaque()
-            var connected = false
             // Native callbacks run synchronously within mt_mosh_run.
             let result = mt_mosh_run(native, context, { ctx, bytes, count in
                 guard let ctx, let bytes else { return }
@@ -45,15 +44,23 @@ public final class MoshTransport: TerminalTransport, @unchecked Sendable {
                 if status == 1 { engine.didConnect() }
                 else { engine.callbacks.networkAvailable(status == 3) }
             })
-            lock.lock(); connected = wasConnected; let overflow = self.overflow; lock.unlock()
-            callbacks.ended(overflow ? .inputOverflow : result == 1 ? (connected ? .engine : .udpUnavailable) : nil)
+            lock.lock(); let overflow = self.overflow; lock.unlock()
+            callbacks.ended(overflow ? .inputOverflow : MoshTransport.nativeFailure(result))
         }
-        var wasConnected = false
-        func didConnect() { lock.lock(); wasConnected = true; lock.unlock(); callbacks.connected() }
+        func didConnect() { callbacks.connected() }
     }
     private let engine: Engine
     private let startLock = NSLock()
     private var started = false
+    /// Only an actual startup timeout should suggest changing the UDP route/firewall.
+    static func nativeFailure(_ result: Int32) -> MoshError? {
+        switch result {
+        case 0, 2: nil
+        case 3: .udpUnavailable
+        case 4: .localeUnavailable
+        default: .engine
+        }
+    }
     public init(bootstrap: MoshBootstrap, size: TerminalSize = .init(), callbacks: MoshCallbacks) throws {
         guard let native = mt_mosh_create(bootstrap.ip, bootstrap.port, bootstrap.key, UInt16(size.columns), UInt16(size.rows)) else {
             throw MoshError.invalidBootstrap

@@ -6,7 +6,8 @@ loopback fixtures, never a personal SSH identity or a remote Mac. The test app
 briefly takes the foreground and is removed afterward.
 Defaults to the SSH preview fixture; --fixture input-lifecycle tests the input/
 renderer fixes, while --fixture system-framework runs only native UIKit/WebKit
-as a control experiment for system logs. None uses personal SSH credentials.
+as a control experiment for system logs. `mosh-locale` checks the physical
+iPad’s available Darwin locales without network access. None uses personal SSH credentials.
 """
 import argparse
 import json
@@ -26,7 +27,7 @@ def run(*args, **kwargs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("device", help="Paired physical iPad UDID from xcrun devicectl list devices")
-    parser.add_argument("--fixture", choices=["preview", "input-lifecycle", "system-framework"], default="preview")
+    parser.add_argument("--fixture", choices=["preview", "input-lifecycle", "system-framework", "mosh-locale"], default="preview")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     project = (root / "MiniTerm.xcodeproj/project.pbxproj").read_text()
@@ -37,6 +38,7 @@ def main():
         "preview": ("PreviewProbe.swift", "PreviewProbeView"),
         "input-lifecycle": ("InputLifecycleProbe.swift", "InputLifecycleProbeView"),
         "system-framework": ("SystemFrameworkProbe.swift", "SystemFrameworkProbeView"),
+        "mosh-locale": ("MoshLocaleProbe.swift", "MoshLocaleProbeView"),
     }[args.fixture]
     bundle = "com.samesense.mini-term." + args.fixture + "-probe"
     with tempfile.TemporaryDirectory(prefix="mini-term-device-preview-", dir="/private/tmp") as directory:

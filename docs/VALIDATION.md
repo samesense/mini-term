@@ -1,5 +1,29 @@
 # Validation record and acceptance checklist
 
+## Physical Mosh startup correction — 2026-11-04
+
+The first user Mosh connection on the iPad failed immediately with a misleading
+UDP/firewall message. The Mac firewall was disabled and allowed the installed
+Homebrew Mosh server; a UDP listener existed on the expected LAN interface.
+
+- **Confirmed on physical iPad:** an isolated locale fixture reports Darwin `UTF-8`
+  and `C` available, with `en_US.UTF-8` and `C.UTF-8` unavailable. The original
+  engine requested the unavailable regional locale and returned before networking.
+- **Fixed:** use the thread-local Darwin `UTF-8` encoding locale. Native return
+  codes now distinguish initialization/engine failures from an actual 15-second
+  UDP startup timeout; only the latter suggests UDP/network configuration.
+- **PASS:** **88 core tests** against the independently installed Homebrew
+  `mosh-server` 1.4.0, including UTF-8/emoji, resize, output pause and NAT roaming.
+  Regression coverage verifies that early engine/locale errors never blame UDP.
+- **PASS:** signed build installed and opened on the physical iPad. The user
+  confirmed that the corrected app connects and shows Mosh against the Mac’s
+  Homebrew server. No Mac firewall settings were changed. Lock/unlock and input
+  acceptance testing is separate and still in progress.
+
+Repeat the on-device capability check with
+`python3 Scripts/test_preview_device.py DEVICE_UDID --fixture mosh-locale`.
+It uses a separate temporary app without accessing SSH identities or the network.
+
 ## Experimental Mosh prototype — 2026-11-04
 
 Implemented on `codex/mosh-prototype`, based on `codex/reconnect-previews-files`.

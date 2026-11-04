@@ -3,12 +3,13 @@ import NIOCore
 import NIOSSH
 
 public enum MoshError: LocalizedError, Sendable {
-    case bootstrap, invalidBootstrap, udpUnavailable, engine, inputOverflow
+    case bootstrap, invalidBootstrap, udpUnavailable, localeUnavailable, engine, inputOverflow
     public var errorDescription: String? {
         switch self {
         case .bootstrap: "Could not start mosh-server. Install Mosh on the Mac (brew install mosh), and allow SSH command execution."
         case .invalidBootstrap: "The Mac returned an invalid Mosh startup response."
         case .udpUnavailable: "Mosh received no response. Allow UDP ports 60000–61000 to the Mac, or connect over Tailscale. SSH alone cannot carry Mosh traffic."
+        case .localeUnavailable: "The Mosh terminal engine could not initialize its UTF-8 locale. This is an app compatibility issue."
         case .engine: "The Mosh session ended unexpectedly. Reconnect to resume your tmux session."
         case .inputOverflow: "Mosh input exceeded its 1 MiB queue limit. The session was closed to avoid losing input."
         }
