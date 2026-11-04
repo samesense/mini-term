@@ -219,6 +219,9 @@ struct PreviewWebView: UIViewRepresentable {
     var inputActive = true
     func makeUIView(context: Context) -> UIView {
         let host = UIView()
+        // Fill the home-indicator/window-handle region when the keyboard is hidden,
+        // while still following the keyboard's top edge when it is displayed.
+        host.keyboardLayoutGuide.usesBottomSafeArea = false
         let web = browser.webView
         web.translatesAutoresizingMaskIntoConstraints = false
         host.addSubview(web)

@@ -1,5 +1,13 @@
 # Validation record and acceptance checklist
 
+## Preview bottom-edge layout — 2026-11-03
+
+The physical screenshot showed the preview stopping above the bottom safe area and exposing the gray workspace background. Set the preview host's keyboard guide to `usesBottomSafeArea = false`, matching the terminal host: content fills the bottom region when the keyboard is hidden and still follows the keyboard when shown.
+
+- **PASS:** 14 existing UIKit keyboard-layout checks, including safe areas, dismissal, floating/docked keyboards, accessory overlap and transient container resizing.
+- **PASS:** 33 simulator preview/workspace checks. New geometry checks confirm both terminal and preview reach the window bottom after keyboard dismissal. The fixture now uses the production full-screen-cover presentation; its former outer VStack had its own safe-area geometry and was unsuitable for window-edge assertions on hardware.
+- **PASS:** signed iPad device build and installation. Real-screen visual confirmation is separate from the simulator geometry checks.
+
 ## Physical iPad routing fix — 2026-11-03
 
 Environment: physical iPad mini (A17 Pro), iPadOS 27.2; Xcode 27.2. The user reported that the real Mac's Python server failed to load in Preview. Local HTTP checks on that Mac returned 200 for both IPv4 loopback and localhost; effective SSH settings allowed TCP forwarding with no PermitOpen restriction.

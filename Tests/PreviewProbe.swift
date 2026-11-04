@@ -228,7 +228,12 @@ private final class PreviewProbeRunner: ObservableObject {
             model.preview.portText = String(remotePort)
             model.preview.open()
             try await waitForPage(model.preview)
+            // Opening preview resigns the terminal's keyboard/accessory. Wait for the
+            // dismissal animation before checking the hidden-keyboard bottom geometry.
+            try await Task.sleep(for: .milliseconds(350))
             check(model.preview.browser?.webView.title == "SSH_PREVIEW_OK", "Workspace preview did not load")
+            check(reachesWindowBottom(surface), "Terminal leaves a bottom safe-area strip after keyboard dismissal")
+            check(reachesWindowBottom(mountedWebView()), "Preview leaves a bottom safe-area strip")
             check(terminalSurface() === surface, "Switching to preview replaced the terminal")
             let initialBrowser = model.preview.browser
             model.preview.showing = false
@@ -284,6 +289,11 @@ private final class PreviewProbeRunner: ObservableObject {
     private func descendants(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap { descendants($0) } }
     private func terminalSurface() -> UIView? { window.flatMap { descendants($0).first { $0.accessibilityIdentifier == "terminal.surface" } } }
     private func mountedWebView() -> UIView? { window.flatMap { descendants($0).first { $0.accessibilityIdentifier == "preview.web" } } }
+    private func reachesWindowBottom(_ view: UIView?) -> Bool {
+        guard let view, let window else { return false }
+        window.layoutIfNeeded()
+        return abs(view.convert(view.bounds, to: window).maxY - window.bounds.maxY) < 0.5
+    }
     private func captureWorkspace() {
         guard let window else { return }
         let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
@@ -295,11 +305,14 @@ struct PreviewProbeView: View {
     @StateObject private var runner = PreviewProbeRunner()
     var body: some View {
         VStack {
-            if let session = runner.session { TerminalScreen(model: session).id(session.id) }
-            else {
+            if runner.session == nil {
                 Text(runner.status)
                 if let browser = runner.browser { PreviewWebView(browser: browser) }
             }
-        }.task { await runner.run() }
+        }
+        // Match ConnectionView's production presentation. An outer root VStack can
+        // reserve safe-area space independently of the workspace on a physical iPad.
+        .fullScreenCover(item: $runner.session) { session in TerminalScreen(model: session).id(session.id) }
+        .task { await runner.run() }
     }
 }
