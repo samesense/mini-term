@@ -2,6 +2,8 @@
 
 Status: first implementation added. See [usage and current limitations](PREVIEWS.md) and [validation](VALIDATION.md#website-preview-milestone). This document records the design and acceptance gates; not every gate is complete.
 
+Physical-device revision: iPadOS 27.2 bypassed the proxy for localhost even with explicit match domains and failover disabled. The implementation now uses a reserved preview origin mapped to Mac localhost and blocks literal loopback page resources before loading. Physical fixture tests now cover routing, WebSocket/SSE, blocked loopback fetch/WebSocket, and failure after proxy shutdown. This changes Host/Origin/certificate expectations; see [current compatibility requirements](PREVIEWS.md). The localhost-origin proposal below records the original plan, not the current browser origin.
+
 Implemented: authenticated embedded SOCKS5 preview, a separate experimental Safari forward, bounded relays on the existing SSH connection, retained workspace views, local port/protocol preferences, and fresh browser restoration after manual reconnect. The current reconnect reloads the root URL rather than restoring a path. Simulator checks cover page/assets/iframe, WebSocket/SSE, external HTTPS destination routing, navigation restrictions, no direct localhost fallback, and workspace lifecycle. Physical iPad/Safari, oldest-runtime coverage, real framework hot reload, speculative DNS behavior, full TLS scenarios, and unsupported browser protocols remain open. A small incremental CONNECT-only SOCKS parser avoids changing dependency pins.
 
 ## Goal and first version

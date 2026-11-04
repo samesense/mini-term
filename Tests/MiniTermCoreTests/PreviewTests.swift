@@ -4,6 +4,12 @@ import Testing
 @testable import MiniTermCore
 
 struct PreviewTests {
+    @Test func reservedOriginMapsOnlyItsExactNameToMacLoopback() {
+        #expect(PreviewAddress.remoteHost(for: PreviewAddress.host) == "localhost")
+        #expect(PreviewAddress.remoteHost(for: PreviewAddress.host.uppercased()) == "localhost")
+        #expect(PreviewAddress.remoteHost(for: "example.com") == "example.com")
+        #expect(PreviewAddress.remoteHost(for: PreviewAddress.host + ".example.com") == PreviewAddress.host + ".example.com")
+    }
     private func authenticated() throws -> SOCKSHandshake {
         var parser = SOCKSHandshake(username: "user", password: "secret")
         var greeting = ByteBuffer(bytes: [5, 2, 0, 2])

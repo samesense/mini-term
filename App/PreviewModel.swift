@@ -96,12 +96,13 @@ final class PreviewBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published private(set) var errorMessage: String?
     @Published private(set) var canGoBack = false
     private var closed = false
+    private var networkRulesReady = false
     private var observations: [NSKeyValueObservation] = []
     private let origin: URL
 
     init(tunnel: SSHPreviewTunnel, useHTTPS: Bool = false) {
         self.tunnel = tunnel
-        origin = URL(string: "\(useHTTPS ? "https" : "http")://localhost:\(tunnel.remotePort)/")!
+        origin = URL(string: "\(useHTTPS ? "https" : "http")://\(PreviewAddress.host):\(tunnel.remotePort)/")!
         let store = WKWebsiteDataStore.nonPersistent()
         var proxy = ProxyConfiguration(socksv5Proxy: .hostPort(host: "127.0.0.1", port: .init(rawValue: UInt16(tunnel.proxyPort))!))
         proxy.allowFailover = false
@@ -124,13 +125,36 @@ final class PreviewBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
                 Task { @MainActor in self?.canGoBack = self?.webView.canGoBack ?? false }
             },
         ]
-        webView.load(URLRequest(url: origin))
+        // Explicit loopback page resources bypass proxies on physical iPadOS. Block them;
+        // relative URLs on our reserved origin travel through SOCKS and map to the Mac.
+        // WebKit's content-rule regular expressions do not support alternation.
+        let hosts = [#"localhost\.?"#, #"[^/]*\.localhost\.?"#, #"127\.[0-9.]+"#, #"\[::1\]"#]
+        let rules: [[String: Any]] = ["https?", "wss?"].flatMap { scheme in
+            hosts.map { host in
+                ["trigger": ["url-filter": "^\(scheme)://([^/]*@)?\(host)(:[0-9]+)?/"], "action": ["type": "block"]]
+            }
+        }
+        let encoded = String(data: try! JSONSerialization.data(withJSONObject: rules), encoding: .utf8)!
+        Task { [weak self] in
+            do {
+                let rule = try await WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "mini-term-preview-loopback-v1", encodedContentRuleList: encoded)
+                guard let rule else { throw PreviewError.unavailable }
+                guard let self, !closed else { return }
+                webView.configuration.userContentController.add(rule)
+                networkRulesReady = true
+                webView.load(URLRequest(url: origin))
+            } catch {
+                guard let self, !closed else { return }
+                loading = false
+                errorMessage = "Could not configure the preview's network rules. Close preview and try again. (Rule error \((error as NSError).code))"
+            }
+        }
     }
 
     var safariURL: URL { URL(string: "\(origin.scheme!)://localhost:\(tunnel.safariPort)/")! }
-    var addressLabel: String { "\(origin.scheme!)://localhost:\(tunnel.remotePort)" }
+    var addressLabel: String { "Mac · \(origin.scheme!)://localhost:\(tunnel.remotePort)" }
     func reload() {
-        guard !closed else { return }
+        guard !closed, networkRulesReady else { return }
         errorMessage = nil
         if webView.url == nil { webView.load(URLRequest(url: origin)) } else { webView.reload() }
     }
@@ -147,8 +171,8 @@ final class PreviewBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
             return .cancel
         }
         if navigationAction.targetFrame?.isMainFrame != false {
-            guard url.host?.lowercased() == "localhost", url.port == tunnel.remotePort else {
-                errorMessage = "This link leaves the preview. Open the site's local development address instead."
+            guard url.host?.lowercased() == PreviewAddress.host, url.port == tunnel.remotePort else {
+                errorMessage = "This link leaves the preview. Use relative links or the preview hostname."
                 return .cancel
             }
         }
@@ -160,12 +184,30 @@ final class PreviewBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { errorMessage = "Preview stopped. Reload to try again." }
     private func failed(_ error: Error) {
-        guard !closed, (error as NSError).code != NSURLErrorCancelled else { return }
-        errorMessage = "Could not load the page. Check that the server is running on port \(tunnel.remotePort) and SSH forwarding is allowed. HTTPS also needs a trusted certificate."
+        let failure = error as NSError
+        guard !closed, !(failure.domain == NSURLErrorDomain && failure.code == NSURLErrorCancelled) else { return }
+        let category = failure.domain == NSURLErrorDomain ? "URL" : failure.domain == WKErrorDomain ? "WebKit" : "Network"
+        let detail: String
+        if failure.domain == NSURLErrorDomain {
+            switch failure.code {
+            case NSURLErrorAppTransportSecurityRequiresSecureConnection:
+                detail = "iPadOS blocked this HTTP preview. The installed app needs its localhost networking configuration."
+            case NSURLErrorSecureConnectionFailed, NSURLErrorServerCertificateUntrusted,
+                 NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateHasUnknownRoot,
+                 NSURLErrorServerCertificateNotYetValid:
+                detail = "The HTTPS connection failed. Check Use HTTPS and the server certificate."
+            case NSURLErrorTimedOut:
+                detail = "The preview timed out. Check SSH and the development server, then reload."
+            default:
+                detail = "Could not load the page. Check that the server is running on port \(tunnel.remotePort) and SSH forwarding is allowed."
+            }
+        } else { detail = "The preview browser could not load this page. Reload to try again." }
+        // Only stable categories/codes are exposed; raw errors can contain private URLs or headers.
+        errorMessage = detail + " (\(category) error \(failure.code))"
     }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = navigationAction.request.url, url.host == "localhost", url.port == tunnel.remotePort {
+        if let url = navigationAction.request.url, url.host == PreviewAddress.host, url.port == tunnel.remotePort {
             webView.load(navigationAction.request)
         }
         return nil

@@ -108,6 +108,10 @@ private struct TerminalWorkspace: View {
                         TextField("Port", text: $preview.portText).keyboardType(.numberPad)
                             .accessibilityIdentifier("preview.port")
                         Toggle("Use HTTPS", isOn: $preview.useHTTPS)
+                        if preview.useHTTPS {
+                            Text("The iPad must trust the certificate for \(PreviewAddress.host).")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                         Text("Start the server in the terminal. Its localhost port will be reached through SSH.")
                             .font(.callout).foregroundStyle(.secondary)
                     }

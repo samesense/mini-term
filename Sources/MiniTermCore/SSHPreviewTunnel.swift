@@ -3,6 +3,16 @@ import NIOCore
 import NIOPosix
 import NIOSSH
 
+/// A reserved browser origin avoids WebKit's implicit physical-device localhost proxy bypass.
+/// Destination mapping happens inside the authenticated proxy; the name needs no DNS entry.
+public enum PreviewAddress {
+    public static let host = "mini-term-preview.invalid"
+
+    static func remoteHost(for host: String) -> String {
+        host.lowercased() == Self.host ? "localhost" : host
+    }
+}
+
 public enum PreviewError: Error, LocalizedError, Sendable {
     case invalidPort, disconnected, unavailable, limitReached
     public var errorDescription: String? {
@@ -98,7 +108,7 @@ final class PreviewForwarder: @unchecked Sendable {
 
     func open(host: String, port: Int, stream: ForwardStream) -> EventLoopFuture<any Channel> {
         guard !stopped else { return loop.makeFailedFuture(PreviewError.disconnected) }
-        return connect(host, port, ForwardInitializer(loop: loop, install: { [weak stream] channel in
+        return connect(PreviewAddress.remoteHost(for: host), port, ForwardInitializer(loop: loop, install: { [weak stream] channel in
             channel.setOption(ChannelOptions.autoRead, value: false).flatMap {
                 channel.setOption(ChannelOptions.allowRemoteHalfClosure, value: true)
             }.flatMapThrowing { [weak stream] in

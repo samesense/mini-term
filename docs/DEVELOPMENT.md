@@ -67,6 +67,15 @@ The layout probe exercises the production constraints during keyboard/container 
 
 The preview probe mounts production WebKit/Ghostty workspace views against generated loopback SSH/HTTP/WebSocket/SSE fixtures. A reachable direct listener detects localhost proxy bypass/fallback. It also checks navigation restrictions, browser replacement, workspace switching, and manual reconnect restoration. It uses only fixture credentials and an ephemeral fixture host-trust record, deleted after the check. It never contacts a personal Mac and does not automate the Safari app. A workspace capture is copied to `/private/tmp/preview-workspace.png` before uninstalling the isolated app.
 
+For a paired physical iPad with a Personal Team selected in the local project:
+
+```sh
+xcrun devicectl list devices
+python3 Scripts/test_preview_device.py PHYSICAL_IPAD_UDID
+```
+
+This builds a separate signed probe app, briefly opens it on the iPad, copies its report to `/private/tmp/mini-term-physical-preview-result.json`, removes it, and returns to MiniTerm. It can interrupt foreground app use. It uses the same synthetic fixtures rather than a personal Mac connection; physical Safari is still a separate check. Physical testing is necessary: iPadOS 27.2 bypassed the original localhost proxy origin while the simulator did not.
+
 [GitHub Actions](https://github.com/samesense/mini-term/actions/workflows/build.yml) runs core tests, the tmux interaction probe, deterministic project generation, dependency resolution, and unsigned simulator/device builds. It does not run physical iPad or iCloud-provider checks.
 
 ## Design previews

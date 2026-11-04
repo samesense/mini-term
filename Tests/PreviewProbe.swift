@@ -177,6 +177,19 @@ private final class PreviewProbeRunner: ObservableObject {
                 check(paths.access { $0.contains(path) }, "Not observed through SSH: \(path)")
             }
             check(directRequests.access { $0 } == 0, "WebKit bypassed SSH for localhost")
+            let blocked = try await browser.webView.callAsyncJavaScript("""
+                const target='localhost:'+port;
+                const fetchResult=fetch('http://'+target+'/blocked-loopback',{cache:'no-store'}).then(()=> 'OPEN',()=> 'BLOCKED');
+                const socketResult=new Promise(resolve=>{
+                    const socket=new WebSocket('ws://'+target+'/blocked-socket');
+                    socket.onopen=()=>{socket.close();resolve('OPEN')};
+                    socket.onerror=()=>resolve('BLOCKED');
+                    setTimeout(()=>{socket.close();resolve('TIMEOUT')},2000);
+                });
+                return (await Promise.all([fetchResult,socketResult])).join('|');
+                """, arguments: ["port": remotePort], in: nil, contentWorld: .page)
+            check(blocked as? String == "BLOCKED|BLOCKED", "Literal loopback fetch/WebSocket was not blocked")
+            check(directRequests.access { $0 } == 0, "Literal loopback resource bypassed SSH")
             _ = try await browser.webView.callAsyncJavaScript("return await fetch('https://preview-fixture.invalid/resource').then(()=> 'UNEXPECTED',()=> 'DENIED')",
                                                               arguments: [:], in: nil, contentWorld: .page)
             check(destinations.access { $0.contains("preview-fixture.invalid") }, "External HTTPS hostname was not sent through SSH")

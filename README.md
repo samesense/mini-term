@@ -103,7 +103,7 @@ One active SSH connection; use Reconnect after it ends. There are no tabs, file 
 
 Physical iPad SSH and touch session switching have been user-tested. Physical iCloud synchronization and dual-role keyboard compatibility still need device testing. Exact results and remaining checks live in [validation](docs/VALIDATION.md).
 
-Website previews have simulator coverage; physical iPad/Safari and real development-framework hot reload remain unverified. The embedded preview is scoped to trusted development sites and tested TCP web traffic, not a VPN.
+Website previews have simulator and physical iPad mini coverage with isolated fixtures, plus user-tested HTTP preview from a real Mac. Actual Safari and real development-framework hot reload remain unverified. Development servers with host allowlists must permit `mini-term-preview.invalid`. The embedded preview is scoped to trusted development sites and tested TCP web traffic, not a VPN.
 
 ## Development
 

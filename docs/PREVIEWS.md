@@ -2,17 +2,21 @@
 
 MiniTerm can view a Mac development server through the existing SSH connection. The in-app preview uses a per-browser authenticated SOCKS5 proxy and SSH `direct-tcpip` channels. The development server can remain bound to the Mac's localhost; it does not need a public HTTP port or deployment.
 
-This is a first implementation with automated simulator evidence. Physical iPad, Safari app behavior, minimum-runtime coverage, and real framework hot reload still need acceptance testing. See [validation](VALIDATION.md#website-preview-milestone) and the [implementation plan](PREVIEW_PLAN.md).
+The preview has automated simulator and physical iPad mini coverage with isolated fixtures. Actual Safari app behavior, minimum-runtime coverage, and real framework hot reload still need acceptance testing. See [validation](VALIDATION.md#physical-ipad-routing-fix--2026-11-03) and the [implementation plan](PREVIEW_PLAN.md).
 
 ## Open a preview
 
 1. Connect to the Mac and start your website's development server in the terminal. Use tmux if it should survive an SSH disconnection.
 2. Tap the **globe** beside the keyboard button. Enter the port printed by the development server, such as `3000` or `5173`.
-3. Leave **Use HTTPS** off for an ordinary HTTP development server. Turn it on only when that port actually serves HTTPS and the iPad trusts its certificate for localhost. MiniTerm does not bypass TLS verification.
+3. Leave **Use HTTPS** off for an ordinary HTTP development server. Turn it on only when that port actually serves HTTPS and the iPad trusts a certificate valid for `mini-term-preview.invalid`. MiniTerm does not bypass TLS verification.
 4. Tap **Open preview**. Switch between **Terminal** and **Preview** using the segmented control. The terminal stays connected and retains its surface.
 5. Use the preview's back/reload controls. **Port** opens its settings; **×** closes preview and its forwarding channels while leaving SSH connected.
 
-The displayed `localhost:PORT` is reached on the **Mac through SSH**. Normal page navigation stays within that localhost host and selected port. External top-level links and application schemes are blocked. HTTP(S) subresources and WebSocket/SSE traffic use the web view's proxy; external HTTPS hostnames are passed to the Mac through SSH rather than opened as direct browser TCP connections.
+The toolbar shows the **Mac's localhost port**. Internally the browser uses `http://mini-term-preview.invalid:PORT`, a reserved hostname mapped to the Mac's localhost by the authenticated SSH proxy. This avoids physical iPadOS WebKit's implicit proxy bypass for literal localhost URLs; explicit proxy matching and disabling failover did not prevent that bypass in device testing. The reserved name needs no DNS setup.
+
+Normal page navigation stays within that preview host and selected port. External top-level links and application schemes are blocked. Relative assets, fetch, iframe, WebSocket and SSE requests follow the preview origin through SSH. HTTP(S) external subresources also use the proxy. Network rules are installed before loading; explicit localhost, `.localhost`, IPv4 loopback and `::1` page resources are blocked instead of silently opening the iPad's local services.
+
+Development servers with Host/Origin allowlists must allow **`mini-term-preview.invalid`** specifically. MiniTerm preserves HTTP headers; it does not rewrite Host, Origin, cookies, redirects or HTML. Prefer relative URLs or URLs built from the current page origin. Hardcoded `localhost` asset/API/live-reload URLs and `Domain=localhost` cookies need configuration for the preview origin. Browser features requiring a secure origin may require HTTPS and a trusted development certificate for the reserved name. Keep host checks and TLS verification enabled.
 
 Port and HTTP/HTTPS choice are saved locally per connection profile. Browser cookies/storage are nonpersistent and isolated to a preview context. Changing the port, reopening preview, or reconnecting creates a fresh browser context. If Preview was selected when disconnected, reconnect restores it and loads the root page; otherwise it returns to Terminal and the globe can reopen preview. It does not restore the previous path or browser login state. Preview preferences, URLs, cookies, and proxy credentials are not added to iCloud connection history or diagnostic reports.
 
@@ -32,7 +36,7 @@ iPadOS may suspend MiniTerm after switching to Safari, interrupting the tunnel. 
 - **HTTPS:** the normal WebKit certificate checks apply. Self-signed or mismatched certificates are not silently trusted.
 - **Background/lock:** networking may stop; reconnect manually. tmux preserves the remote development process, not the iPad socket.
 
-The embedded proxy explicitly disables direct fallback. Simulator tests leave a direct listener reachable at the same localhost URL and confirm that supported page requests do not use it, including after proxy shutdown. This evidence covers the tested WebKit runtime and TCP web traffic. It does not establish absence of speculative DNS traffic, all browser protocols, or all OS versions. WebRTC/UDP, QUIC/WebTransport, downloads outside the embedded web view, and arbitrary untrusted web content are outside the verified scope. The feature is not a VPN or a general browser sandbox.
+The embedded proxy explicitly disables direct fallback. Simulator and physical-device tests leave a direct listener reachable on the iPad's localhost at the selected Mac port. The fixed preview loads through SSH, literal localhost fetch/WebSocket requests are blocked, and a new request fails after proxy shutdown rather than taking a direct route. This evidence covers the tested WebKit runtime and TCP web paths. It does not establish absence of speculative DNS traffic, all browser protocols, or all OS versions. WebRTC/UDP, QUIC/WebTransport, downloads outside the embedded web view, and arbitrary untrusted web content are outside the verified scope. The feature is not a VPN or a general browser sandbox.
 
 ## Resource handling
 

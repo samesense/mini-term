@@ -349,14 +349,15 @@ extension SSHIntegrationTests {
         return (channel, reader)
     }
 
-    private func socks(tunnel: SSHPreviewTunnel, group: MultiThreadedEventLoopGroup, port: Int = 3000) async throws -> (any Channel, PreviewTestReader) {
+    private func socks(tunnel: SSHPreviewTunnel, group: MultiThreadedEventLoopGroup, port: Int = 3000, host: String = "localhost") async throws -> (any Channel, PreviewTestReader) {
         let (channel, reader) = try await client(port: tunnel.proxyPort, group: group)
         try await channel.writeAndFlush(ByteBuffer(bytes: [5, 1, 2])).get()
         #expect(try await reader.take(2) == Data([5, 2]))
         let user = Array(tunnel.username.utf8), password = Array(tunnel.password.utf8)
         try await channel.writeAndFlush(ByteBuffer(bytes: [1, UInt8(user.count)] + user + [UInt8(password.count)] + password)).get()
         #expect(try await reader.take(2) == Data([1, 0]))
-        try await channel.writeAndFlush(ByteBuffer(bytes: [5, 1, 0, 3, 9] + Array("localhost".utf8) + [UInt8(port >> 8), UInt8(port & 255)])).get()
+        let hostname = Array(host.utf8)
+        try await channel.writeAndFlush(ByteBuffer(bytes: [5, 1, 0, 3, UInt8(hostname.count)] + hostname + [UInt8(port >> 8), UInt8(port & 255)])).get()
         let reply = try await reader.take(10)
         #expect(reply[1] == (port == 3000 ? 0 : 5))
         return (channel, reader)
@@ -370,7 +371,7 @@ extension SSHIntegrationTests {
         let tunnel = try await transport.startPreview(remotePort: 3000).get()
         #expect(tunnel.proxyPort != tunnel.safariPort)
         transport.setOutputPaused(true)
-        let (socksChannel, socksReader) = try await socks(tunnel: tunnel, group: group)
+        let (socksChannel, socksReader) = try await socks(tunnel: tunnel, group: group, host: PreviewAddress.host)
         let (safari, safariReader) = try await client(port: tunnel.safariPort, group: group)
         defer { socksChannel.close(promise: nil); safari.close(promise: nil) }
         let payload = Data((0..<(1024 * 1024)).map { UInt8($0 % 251) })

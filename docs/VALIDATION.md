@@ -1,5 +1,19 @@
 # Validation record and acceptance checklist
 
+## Physical iPad routing fix — 2026-11-03
+
+Environment: physical iPad mini (A17 Pro), iPadOS 27.2; Xcode 27.2. The user reported that the real Mac's Python server failed to load in Preview. Local HTTP checks on that Mac returned 200 for both IPv4 loopback and localhost; effective SSH settings allowed TCP forwarding with no PermitOpen restriction.
+
+- **REPRODUCED on hardware:** the original preview's `http://localhost:PORT` bypassed the per-store proxy. A direct listener on the iPad received three requests, and the no-fallback assertion failed even with failover disabled. Explicit match domains did not fix it. This contradicts the earlier simulator-only result and limits that earlier evidence to the simulator.
+- **FIX:** use `mini-term-preview.invalid:PORT` as the browser origin and map that exact name to Mac localhost inside the authenticated SOCKS proxy. Compile and install network rules before any page load; block explicit loopback HTTP/WebSocket resources instead of allowing implicit direct requests. Preserve headers and standard certificate validation; scoped HTTP ATS exceptions cover the reserved name and the separate Safari localhost forward.
+- **PASS:** **31 checks on the physical iPad**, with zero direct-listener requests: page/fetch/image/iframe, WebSocket/SSE through encrypted SSH, blocked literal localhost fetch/WebSocket, external HTTPS destination routing, restricted main-frame navigation, no fallback after proxy close, nonpersistent browser state, separate unproxied web view using the Safari forward, stable workspace switching, browser replacement, and reconnect restoration.
+- **PASS:** **61 tests in 6 suites**, including exact reserved-name mapping and an encrypted SOCKS request using that name against a localhost-only SSH destination.
+- Added a repeatable physical test runner, `Scripts/test_preview_device.py`. It uses an isolated signed app and generated fixture identities, removes the probe, and reopens MiniTerm. The simulator runner exercises the same fixture; it cannot substitute for hardware routing checks.
+- Preview failures now include a safe error category/code, with specific messages for ATS, TLS, and timeout errors; raw error strings, URLs, and headers are not exposed.
+- **USER-REPORTED PASS:** the corrected, signed MiniTerm build was installed on the paired iPad and loaded the real Mac's Python HTTP server on port 3000 through SSH. The server remained bound to Mac IPv4 loopback.
+
+Compatibility: HTTP Host/Origin are now the reserved name. Server host allowlists, absolute localhost URLs, cookies scoped to localhost, and HTTPS certificates may need configuration. Real Vite/Next.js HMR, comprehensive HTTPS/WSS, minimum-runtime behavior, and the actual Safari app remain separate acceptance work. These tests cover the described TCP web paths, not a general browser/VPN guarantee.
+
 ## Website preview milestone
 
 Environment: Xcode 27.2, iPad mini (A20 Pro) simulator, iOS 27.2. Generated loopback credentials and synthetic servers only; no personal Mac connection or physical iPad was used for these new checks.
