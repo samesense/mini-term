@@ -1,5 +1,27 @@
 # Validation record and acceptance checklist
 
+## Keyboard/animation log investigation — 2026-11-03
+
+The paired iPad's live Console stream showed repeated QuartzCore `cannot add handler to 0 from 0 - dropping` errors, one AnimationKit `LittleGlowView` transform-decomposition fault, and WebKit/RunningBoard process-cleanup errors. A fresh search found no MiniTerm crash reports. Framework attribution alone does not prove those messages are harmless or that MiniTerm caused them.
+
+Two concrete wrapper issues were reproduced and corrected:
+
+- Caret/font geometry refresh called `reloadInputViews()` even though keyboard/accessory identity and input traits hadn't changed. It now retains the `UITextInputDelegate` selection notifications without replacing UIKit's input views.
+- Layout and post-render synchronization resized every direct layer whose delegate wasn't a `UIView`. The real surface also has a UIKit `CALayer` delegated to `WindowAnchor`, so that predicate included layers outside the renderer. Updates now target only the pinned engine's `IOSurfaceLayer`, change properties only when necessary, and disable implicit layer actions. The engine's class registration is verified in [its pinned source](https://github.com/ghostty-org/ghostty/blob/1e9e14af5df14211892f5fc15fd21a49c7d94868/src/renderer/metal/IOSurfaceLayer.zig); this identification must be rechecked on an engine upgrade.
+
+Validation:
+
+- **REPRODUCED:** the pre-fix fixture observed keyboard reloads during geometry/zoom and modification of unrelated delegate/nil-delegate layers. These are independently observable defects; this does not establish that they caused every reported system log.
+- **PASS:** **20 lifecycle checks** with real UIKit/Ghostty: caret notifications, unchanged keyboard/accessory, IME preedit/selection, actual font zoom, foreign-layer preservation, renderer sizing and focus reacquisition.
+- **PASS:** existing **19 keyboard**, **33 WebKit/workspace** and **24 layout** checks; zero direct-listener requests in the preview fixture.
+- **PASS:** signed iPad build. Only the toolchain's usual AppIntents metadata-skipped warning was emitted; no app-source compiler warnings.
+- **PASS:** the updated vendor patch reapplies to the exact upstream pin and reproduces all checked-in wrapper sources.
+- **PENDING:** physical post-fix log capture and installation. The iPad required its passcode during verification; the isolated native-framework control app built/installed but could not launch and was removed. No claim that the `LittleGlowView`, QuartzCore or WebKit messages have disappeared on hardware.
+
+`Scripts/test_input_lifecycle.py SIMULATOR_UDID` repeats the new checks. `Scripts/test_preview_device.py DEVICE_UDID --fixture input-lifecycle` runs them on an unlocked paired device. `--fixture system-framework` runs standard UIKit keyboard and nonpersistent `WKWebView` create/load/close cycles without invoking the app's terminal, SSH or preview model, to help distinguish system-generated logs. These signed probe apps use separate identities and are removed afterward.
+
+Preview teardown uses public `stopLoading`, delegate/KVO cleanup and tunnel close; the app does not kill WebKit processes or acquire RunningBoard assertions. WebKit's [assertion implementation](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/Cocoa/ProcessAssertionCocoa.mm) emits the observed acquisition-error format. No private entitlement, retained retired browser, or log-suppression workaround was added. The native control experiment and physical reproduction remain necessary before attributing these cleanup messages to an app defect.
+
 ## Terminal whole-row bottom alignment — 2026-11-03
 
 The terminal view reached the bottom edge, but Ghostty's two-point vertical padding and the unused fraction of a text row still left tmux's last row above it. The app now removes vertical engine padding, uses Ghostty's actual cell-height metrics to size the view to complete pixel rows, and anchors that view to the keyboard/bottom edge. Fractional leftover space sits above the first row. Touch coordinates follow the actual view position; no renderer scaling, clipping, or tmux configuration changes are used.

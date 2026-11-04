@@ -6,6 +6,7 @@
 //
 
 #if canImport(UIKit)
+    import QuartzCore
     import UIKit
 
     /// SwiftUI focus-bridge hooks; behavior lives in +Lifecycle.
@@ -256,20 +257,24 @@
             contentScaleFactor = scale
             layer.contentsScale = scale
             layer.masksToBounds = true
-            guard let sublayers = layer.sublayers else { return }
-            let frame = sublayerFrame
-            // UIKit owns the layers of subviews used for text input and menus.
-            for sublayer in sublayers where !(sublayer.delegate is UIView) {
-                sublayer.frame = frame
-                sublayer.contentsScale = scale
-            }
+            synchronizeRendererLayers(scale: scale)
         }
 
         func enforceSublayerScale() {
             let scale = resolvedDisplayScale()
+            synchronizeRendererLayers(scale: scale)
+        }
+
+        private func synchronizeRendererLayers(scale: CGFloat) {
             guard let sublayers = layer.sublayers else { return }
             let frame = sublayerFrame
-            for sublayer in sublayers where !(sublayer.delegate is UIView) {
+            // The pinned Ghostty engine installs its IOSurfaceLayer here. UIKit can
+            // also install layers whose delegate isn't a UIView (or is nil);
+            // those layers and their running animations belong to UIKit.
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            defer { CATransaction.commit() }
+            for sublayer in sublayers where NSStringFromClass(type(of: sublayer)) == "IOSurfaceLayer" {
                 if sublayer.contentsScale != scale {
                     sublayer.contentsScale = scale
                 }

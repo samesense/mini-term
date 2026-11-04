@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Run the isolated preview fixture on a paired physical iPad, then return to MiniTerm.
+"""Run an isolated fixture on a paired physical iPad, then return to MiniTerm.
 
 Requires a Personal Team selected in the local Xcode project. Uses generated
 loopback fixtures, never a personal SSH identity or a remote Mac. The test app
 briefly takes the foreground and is removed afterward.
+Defaults to the SSH preview fixture; --fixture input-lifecycle tests the input/
+renderer fixes, while --fixture system-framework runs only native UIKit/WebKit
+as a control experiment for system logs. None uses personal SSH credentials.
 """
 import argparse
 import json
@@ -23,13 +26,19 @@ def run(*args, **kwargs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("device", help="Paired physical iPad UDID from xcrun devicectl list devices")
+    parser.add_argument("--fixture", choices=["preview", "input-lifecycle", "system-framework"], default="preview")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     project = (root / "MiniTerm.xcodeproj/project.pbxproj").read_text()
     match = re.search(r'DEVELOPMENT_TEAM = "?([A-Z0-9]+)"?;', project)
     if not match:
         sys.exit("Select your Personal Team in the local Xcode project before running this device probe.")
-    bundle = "com.samesense.mini-term.preview-probe"
+    fixture, view = {
+        "preview": ("PreviewProbe.swift", "PreviewProbeView"),
+        "input-lifecycle": ("InputLifecycleProbe.swift", "InputLifecycleProbeView"),
+        "system-framework": ("SystemFrameworkProbe.swift", "SystemFrameworkProbeView"),
+    }[args.fixture]
+    bundle = "com.samesense.mini-term." + args.fixture + "-probe"
     with tempfile.TemporaryDirectory(prefix="mini-term-device-preview-", dir="/private/tmp") as directory:
         probe = Path(directory)
         for folder in ["App", "Sources", "Tests", "Vendor"]:
@@ -41,10 +50,10 @@ def main():
         (probe / "Scripts/generate_project.py").write_text(generator)
         run(sys.executable, str(probe / "Scripts/generate_project.py"))
         (probe / "App/MiniTermApp.swift").write_text(
-            "import SwiftUI\n@main struct ProbeApp: App { var body: some Scene { WindowGroup { PreviewProbeView() } } }\n"
+            "import SwiftUI\n@main struct ProbeApp: App { var body: some Scene { WindowGroup { " + view + "() } } }\n"
         )
         screen = probe / "App/TerminalScreen.swift"
-        screen.write_text(screen.read_text() + "\n" + (root / "Tests/PreviewProbe.swift").read_text())
+        screen.write_text(screen.read_text() + "\n" + (root / "Tests" / fixture).read_text())
         derived = Path("/private/tmp/mini-term-physical-preview-derived")
         log_path = Path("/private/tmp/mini-term-physical-preview-build.log")
         with log_path.open("w") as log:
@@ -57,22 +66,22 @@ def main():
         run("xcrun", "devicectl", "device", "install", "app", "--device", args.device, str(app))
         try:
             run("xcrun", "devicectl", "device", "process", "launch", "--device", args.device, bundle)
-            report_path = Path("/private/tmp/mini-term-physical-preview-result.json")
+            report_path = Path("/private/tmp/mini-term-physical-" + args.fixture + "-result.json")
             report_path.unlink(missing_ok=True)
             for _ in range(60):
                 copied = subprocess.run([
                     "xcrun", "devicectl", "device", "copy", "from", "--device", args.device,
                     "--domain-type", "appDataContainer", "--domain-identifier", bundle,
-                    "--source", "Documents/preview-probe.json", "--destination", str(report_path),
+                    "--source", "Documents/" + args.fixture + "-probe.json", "--destination", str(report_path),
                 ], capture_output=True, text=True)
                 if copied.returncode == 0 and report_path.exists():
                     report = json.loads(report_path.read_text())
                     print(json.dumps(report, indent=2))
                     if report["failures"]:
-                        sys.exit("Physical preview probe failed")
+                        sys.exit("Physical " + args.fixture + " probe failed")
                     return
                 time.sleep(1)
-            sys.exit("Physical preview probe timed out; build log: " + str(log_path))
+            sys.exit("Physical " + args.fixture + " probe timed out; build log: " + str(log_path))
         finally:
             run("xcrun", "devicectl", "device", "uninstall", "app", "--device", args.device, bundle)
             subprocess.run(["xcrun", "devicectl", "device", "process", "launch", "--device", args.device,

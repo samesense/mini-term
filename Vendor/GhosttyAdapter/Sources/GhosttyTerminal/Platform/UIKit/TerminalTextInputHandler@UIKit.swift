@@ -294,9 +294,9 @@
             )
             view.inputDelegate?.selectionWillChange(view)
             view.inputDelegate?.selectionDidChange(view)
-            if view.isFirstResponder {
-                view.reloadInputViews()
-            }
+            // Only the caret/candidate geometry changed. Reloading input views
+            // replaces UIKit's keyboard/accessory hierarchy during an active
+            // animation; neither view nor its input traits changed here.
         }
 
         private var shouldNotifySelectionChange: Bool {

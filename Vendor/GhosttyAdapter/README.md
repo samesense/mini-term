@@ -4,6 +4,8 @@
 
 The local target supports iPadOS 17+. Deprecated pre-iOS-16 menu fallbacks are removed, display-scale/color traits use registration callbacks, and SwiftUI uses the current `onChange` closure. These compatibility edits are included in the reviewed patch.
 
+Caret/font geometry changes notify `UITextInputDelegate` without reloading unchanged keyboard/accessory views. Layer sizing touches only the pinned engine's `IOSurfaceLayer`, identified by the class registered in its `src/renderer/metal/IOSurfaceLayer.zig` at engine commit `1e9e14af5df14211892f5fc15fd21a49c7d94868`. UIKit's other layers and animations are left alone. Recheck this engine-layer identification when upgrading the pin. `Scripts/test_input_lifecycle.py` covers ownership, zoom, IME and keyboard continuity with a real surface.
+
 The package still uses that exact upstream `GhosttyKit` product and checksum-verified engine binary. It does not rebuild or replace the engine. DisplayLink stays pinned by the app lockfile.
 
 Upstream’s public `sendKey` immediately presses/releases and derives text from a US table. It cannot model physical holds for arbitrary native keys. Instead of copying keycode tables or adding an encoder, these hooks extend the existing UIKit path:

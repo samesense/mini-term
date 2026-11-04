@@ -1,3 +1,12 @@
+--- a/Sources/GhosttyTerminal/Platform/UIKit/TerminalTextInputHandler@UIKit.swift
++++ b/Sources/GhosttyTerminal/Platform/UIKit/TerminalTextInputHandler@UIKit.swift
+@@ -297,3 +297,3 @@
+-            if view.isFirstResponder {
+-                view.reloadInputViews()
+-            }
++            // Only the caret/candidate geometry changed. Reloading input views
++            // replaces UIKit's keyboard/accessory hierarchy during an active
++            // animation; neither view nor its input traits changed here.
 --- a/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+Input.swift
 +++ b/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+Input.swift
 @@ -14,0 +15,2 @@
@@ -18,7 +27,39 @@
 +                isKeyCommand: modifierFlags == key.modifierFlags && keyCommandInput(for: key, filteredModifierFlags: modifierFlags) != nil,
 --- a/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+Lifecycle.swift
 +++ b/Sources/GhosttyTerminal/Platform/UIKit/UITerminalView+Lifecycle.swift
-@@ -286,9 +286,6 @@
+@@ -8,0 +9 @@
++    import QuartzCore
+@@ -258,0 +260,9 @@
++            synchronizeRendererLayers(scale: scale)
++        }
++
++        func enforceSublayerScale() {
++            let scale = resolvedDisplayScale()
++            synchronizeRendererLayers(scale: scale)
++        }
++
++        private func synchronizeRendererLayers(scale: CGFloat) {
+@@ -261,12 +271,7 @@
+-            // UIKit owns the layers of subviews used for text input and menus.
+-            for sublayer in sublayers where !(sublayer.delegate is UIView) {
+-                sublayer.frame = frame
+-                sublayer.contentsScale = scale
+-            }
+-        }
+-
+-        func enforceSublayerScale() {
+-            let scale = resolvedDisplayScale()
+-            guard let sublayers = layer.sublayers else { return }
+-            let frame = sublayerFrame
+-            for sublayer in sublayers where !(sublayer.delegate is UIView) {
++            // The pinned Ghostty engine installs its IOSurfaceLayer here. UIKit can
++            // also install layers whose delegate isn't a UIView (or is nil);
++            // those layers and their running animations belong to UIKit.
++            CATransaction.begin()
++            CATransaction.setDisableActions(true)
++            defer { CATransaction.commit() }
++            for sublayer in sublayers where NSStringFromClass(type(of: sublayer)) == "IOSurfaceLayer" {
+@@ -286,9 +291,6 @@
 -        override open func traitCollectionDidChange(
 -            _ previousTraitCollection: UITraitCollection?,
 -        ) {
