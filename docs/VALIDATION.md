@@ -7,6 +7,7 @@ The physical screenshot showed the preview stopping above the bottom safe area a
 - **PASS:** 14 existing UIKit keyboard-layout checks, including safe areas, dismissal, floating/docked keyboards, accessory overlap and transient container resizing.
 - **PASS:** 33 simulator preview/workspace checks. New geometry checks confirm both terminal and preview reach the window bottom after keyboard dismissal. The fixture now uses the production full-screen-cover presentation; its former outer VStack had its own safe-area geometry and was unsuitable for window-edge assertions on hardware.
 - **PASS:** signed iPad device build and installation. Real-screen visual confirmation is separate from the simulator geometry checks.
+- **PASS on the physical iPad:** a fresh screenshot of the reopened Preview confirms that page content reaches the bottom edge and the lighter safe-area strip is gone. The operating system's resize handle overlays the content.
 
 ## Physical iPad routing fix — 2026-11-03
 
