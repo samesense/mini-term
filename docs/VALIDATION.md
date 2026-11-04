@@ -1,5 +1,53 @@
 # Validation record and acceptance checklist
 
+## Experimental Mosh prototype — 2026-11-04
+
+Implemented on `codex/mosh-prototype`, based on `codex/reconnect-previews-files`.
+Mosh is off by default and opt-in for new connections.
+
+- **PASS:** **87 core tests in 11 suites** with the loopback Mosh server fixture
+  enabled. This includes strict/fragmented/bootstrap parsing, secret redaction,
+  rejected/oversized responses, request/exit acknowledgement, bounded cancellation,
+  input overflow, and auxiliary SSH authentication/parent-close detection without a
+  competing interactive shell.
+- **PASS:** actual encrypted Mosh transport against the pinned upstream server:
+  ASCII and UTF-8/emoji input, remote 91×31 resizing, paused/unpaused output,
+  four seconds of dropped UDP packets, resumed queued input after the NAT proxy
+  changes its server-facing source port, subsequent input and clean remote exit.
+  The network-wait callback is checked during loss and clears on resumption.
+- **PASS:** **14 Mosh simulator checks** through the real app model and Ghostty:
+  generated host trust/SSH bootstrap, one Mosh server, real screen rendering and
+  input, surviving auxiliary SSH socket closure, preserving the same terminal model,
+  wake restoration of SSH tools without another Mosh bootstrap, sanitized diagnostics,
+  clean final state and retaining the final remote screen after exit.
+- **PASS:** **28 workspace/file/recovery**, **33 preview**, and **19 lifecycle/reconnect**
+  simulator regressions with the default SSH transport. Preview routing reports no
+  direct-listener hits. Native Files mounting/cancellation remains covered.
+- **PASS:** simulator and unsigned iPad builds. Final Mosh simulator/iPad builds
+  and core tests use committed dependency pins, including Swift ASN.1 1.7.3. The
+  shared simulator harness now copies the app lockfile and disables automatic
+  package resolution. The earlier regression probes used the compatible cached
+  ASN.1 1.7.4; no dependency upgrade is included in this branch.
+- **PASS:** final app/core compilation has no source warnings. The Xcode-only
+  AppIntents metadata-skipped message remains. Upstream C++ narrowing diagnostics
+  are disabled only in the native target, with the compatibility changes recorded
+  in [provenance](../Vendor/MoshNative/PROVENANCE.md).
+
+**Not physically verified:** the real iPad mini's keyboard through Mosh, screen
+rotation/keyboard resizing, sleep/lock, long suspension, Wi-Fi/VPN roaming, and the
+Mac's Homebrew Mosh server/firewall. Simulator wake signals are synthetic; no
+background execution or universal connectivity guarantee is claimed. Mosh needs
+reachable UDP and keeps protocol state only in memory. Local prediction, disk
+restoration, custom UDP ranges/endpoint selection and SSH-only UDP tunneling are
+not included. GPL distribution requirements are documented with the source.
+
+On the iPad, enable Mosh, connect to a named tmux session, record `echo $$`, then
+exercise sleep/unlock and Wi-Fi/Tailscale transitions while a command runs. Confirm
+the shell/session survives, queued keystrokes arrive once, the network-wait label
+clears, and files/previews reconnect without replacing the terminal. Test explicit
+disconnect, app termination/relaunch and UDP-blocked startup separately. Use
+[setup and repeatable commands](MOSH.md) for prerequisites and the host fixture.
+
 ## Foreground recovery, saved previews and SFTP — 2026-11-04
 
 Implemented on `codex/reconnect-previews-files`. The earlier keyboard/layer fixes are retained in a separate commit on this branch; physical acceptance of those fixes remains pending.

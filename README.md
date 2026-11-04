@@ -106,9 +106,15 @@ In the port sheet, enter a **path** such as `/dashboard`, give it a **shortcut n
 
 Tap the terminal's **folder** button. Browse folders, tap a file to download and save it in Files, or use **… → Upload from Files** to upload a file under a new name. Transfers use SFTP on the current SSH connection. Existing remote files are never overwritten; cancelled uploads may leave a partial new file. [File browser details](docs/FILES.md).
 
+### Experimental Mosh
+
+Install Mosh on the Mac with `brew install mosh`, then enable **Settings → Experimental transport → Use Mosh** before connecting. SSH verifies the host and starts the server; terminal traffic then uses encrypted UDP. The Mac must be reachable on UDP ports **60000–61000**—an SSH-only route is insufficient. Tailscale can provide that route.
+
+Mosh keeps the terminal session through temporary network loss while MiniTerm remains in memory. Files and previews still use SSH; after an interruption, their socket reconnects on wake/network recovery without replacing the Mosh terminal. Physical iPad sleep/wake and Wi-Fi roaming tests are pending. [Setup, limits, and testing](docs/MOSH.md).
+
 ## Current limits
 
-One active SSH connection. There are no terminal tabs, imported private keys or SSH agents. File transfers support individual regular files; directory transfers and automatic transfer resumption are not included. iPadOS can suspend networking in the background; tmux provides remote process persistence.
+One active terminal workspace (SSH or experimental Mosh). There are no terminal tabs, imported private keys or SSH agents. File transfers support individual regular files; directory transfers and automatic transfer resumption are not included. iPadOS can suspend networking in the background; tmux provides remote process persistence.
 
 Physical iPad SSH and touch session switching have been user-tested. Physical iCloud synchronization and dual-role keyboard compatibility still need device testing. Exact results and remaining checks live in [validation](docs/VALIDATION.md).
 

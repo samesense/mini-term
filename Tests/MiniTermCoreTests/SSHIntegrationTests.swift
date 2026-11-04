@@ -68,12 +68,14 @@ private final class EchoShell: ChannelInboundHandler {
 struct SSHIntegrationTests {
     private func server(group: MultiThreadedEventLoopGroup, clientSeed: Data, rejectPTY: Bool = false,
                         echoThenExit: Bool = false,
+                        parents: Locked<[(any Channel)]>? = nil,
                         forward: (host: String, port: Int)? = nil,
                         observer: @escaping @Sendable (ServerEvent) -> Void = { _ in }) async throws -> (any Channel, String) {
         let host = NIOSSHPrivateKey(ed25519Key: .init())
         let clientKey = try NIOSSHPrivateKey(ed25519Key: Curve25519.Signing.PrivateKey(rawRepresentation: clientSeed)).publicKey
         let server = try await ServerBootstrap(group: group).childChannelInitializer { channel in
-            channel.eventLoop.makeCompletedFuture {
+            parents?.withValue { $0.append(channel) }
+            return channel.eventLoop.makeCompletedFuture {
                 try channel.pipeline.syncOperations.addHandler(NIOSSHHandler(
                     role: .server(.init(hostKeys: [host], userAuthDelegate: PublicKeyServerAuth(acceptedKey: clientKey))),
                     allocator: channel.allocator,
@@ -93,6 +95,26 @@ struct SSHIntegrationTests {
             }
         }.bind(host: "127.0.0.1", port: 0).get()
         return (server, String(openSSHPublicKey: host.publicKey))
+    }
+
+    @Test func auxiliaryAuthenticationNeverOpensAnInteractiveShell() async throws {
+        let seed = SSHIdentity.generateSeed()
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer { group.shutdownGracefully { _ in } }
+        let parents = Locked<[(any Channel)]>([])
+        let (server, hostKey) = try await server(group: group, clientSeed: seed, parents: parents) { _ in Issue.record("Unexpected PTY/shell in auxiliary-only mode") }
+        defer { server.close(promise: nil) }
+        let disconnected = TestSignal("auxiliary socket closed")
+        let connected = TestSignal("auxiliary authenticated")
+        let transport = SSHTransport(callbacks: .init(state: { if $0 == .connected { connected.fulfill() }; if $0 == .disconnected { disconnected.fulfill() } }, output: { _ in Issue.record("Auxiliary output leaked into renderer") }))
+        defer { transport.disconnect() }
+        transport.connect(to: try SSHConnection(host: "127.0.0.1", username: "tester", port: server.localAddress!.port!, tmuxSession: "work"), seed: seed, auxiliaryOnly: true) { key, completion in
+            completion(key == hostKey ? .success(()) : .failure(TerminalError.hostKeyMismatch))
+        }
+        try await fulfillment(of: [connected], timeout: 8)
+        try await transport.checkAlive().get()
+        for parent in parents.withValue({ $0 }) { try await parent.close().get() }
+        try await fulfillment(of: [disconnected], timeout: 3)
     }
 
     @Test func authenticatedPTYByteBridgeResizeAndDisconnect() async throws {

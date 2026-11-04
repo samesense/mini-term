@@ -38,6 +38,7 @@ public final class SSHTransport: @unchecked Sendable {
     private var deadline: Scheduled<Void>?
     private var started = false
     private var startupCommand: String?
+    private var auxiliaryOnly = false
     private var preview: PreviewForwarder?
     private var sftp: SFTPHandler?
     private var liveness: LivenessProbe?
@@ -51,10 +52,11 @@ public final class SSHTransport: @unchecked Sendable {
 
     deinit { group.shutdownGracefully { _ in } }
 
-    public func connect(to connection: SSHConnection, seed: Data, verifyHostKey: @escaping HostKeyVerifier) {
+    public func connect(to connection: SSHConnection, seed: Data, auxiliaryOnly: Bool = false, verifyHostKey: @escaping HostKeyVerifier) {
         loop.execute { [self] in
             guard !started, !state.isFinished else { return }
             started = true
+            self.auxiliaryOnly = auxiliaryOnly
             startupCommand = connection.startupCommand
             transition(.connecting)
             do {
@@ -85,7 +87,13 @@ public final class SSHTransport: @unchecked Sendable {
                     }
                     switch result {
                     case .success(let channel):
-                        if state.isFinished { channel.close(promise: nil) } else { parent = channel }
+                        if state.isFinished { channel.close(promise: nil) } else {
+                            parent = channel
+                            // NIOSSH consumes the parent's channelInactive event. A PTY
+                            // normally supplies its own close notification; auxiliary-only
+                            // SSH has no persistent child, so also observe socket closure.
+                            channel.closeFuture.whenComplete { [weak self] _ in self?.closed() }
+                        }
                     case .failure(let error): fail(error)
                     }
                 }
@@ -214,6 +222,7 @@ public final class SSHTransport: @unchecked Sendable {
 
     fileprivate func authenticated(on channel: any Channel) {
         guard !state.isFinished else { return }
+        if auxiliaryOnly { shellReady(); return }
         transition(.openingShell)
         do {
             let ssh = try channel.pipeline.syncOperations.handler(type: NIOSSHHandler.self)
@@ -228,6 +237,27 @@ public final class SSHTransport: @unchecked Sendable {
             }
             promise.futureResult.whenFailure { [weak self] in self?.fail($0) }
         } catch { fail(error) }
+    }
+
+    /// Start Mosh through a separate authenticated SSH exec channel. Bootstrap output contains
+    /// a secret, so it never enters the terminal renderer or connection diagnostics.
+    public func startMosh(for connection: SSHConnection) -> EventLoopFuture<MoshBootstrap> {
+        loop.flatSubmit { [self] in
+            guard state == .connected, auxiliaryOnly, let parent,
+                  let ip = parent.remoteAddress?.ipAddress else {
+                return loop.makeFailedFuture(MoshError.bootstrap)
+            }
+            let handler = MoshBootstrapHandler(loop: loop, ip: ip, command: MoshBootstrap.command(for: connection), size: size)
+            do {
+                let ssh = try parent.pipeline.syncOperations.handler(type: NIOSSHHandler.self)
+                let promise = loop.makePromise(of: (any Channel).self)
+                ssh.createChannel(promise, channelType: .session) { channel, _ in
+                    channel.eventLoop.makeCompletedFuture { try channel.pipeline.syncOperations.addHandler(handler) }
+                }
+                promise.futureResult.whenFailure { _ in handler.fail() }
+                return handler.result.futureResult
+            } catch { handler.fail(); return handler.result.futureResult }
+        }
     }
 
     fileprivate func shellReady() {

@@ -14,5 +14,14 @@ The app depends on the following projects. License texts for the main direct dep
 | Swift Collections | Apache-2.0 and runtime library exception | https://github.com/apple/swift-collections/tree/1.7.5 |
 | Swift System | Apache-2.0 and runtime library exception | https://github.com/apple/swift-system/tree/1.8.1 |
 | Swift ASN.1 | Apache-2.0 and runtime library exception | https://github.com/apple/swift-asn1/tree/1.7.3 |
+| Mosh (Blink fork, native source) | GPL-3.0-or-later, iOS exception; component notices | https://github.com/blinksh/mosh/tree/3640d36678dc415ba24f03d7f6fb20a0dac1fa6b |
+| Protobuf lite 3.21.1 | BSD-3-Clause | https://github.com/protocolbuffers/protobuf/tree/v21.1 |
+
+The Mosh source, GPL text, iOS exception and Protobuf license are preserved under
+`Vendor/MoshNative`. See its [provenance and local modifications](Vendor/MoshNative/PROVENANCE.md).
+Linking Mosh introduces GPL obligations for distributing the combined application;
+the iOS exception does not remove those obligations. The repository currently has
+no project-wide license declaration. A compatible distribution license and complete
+corresponding source must be provided before distributing the combined app.
 
 The prebuilt Ghostty static library incorporates upstream dependencies. Its source `build.zig.zon` and dependency directories describe their licenses. The wrapper also bundles shell integration and terminfo resources, including a bash-preexec MIT notice. Preserve relevant upstream notices with any redistributed build. This list is a dependency record, not a claim of a completed binary redistribution audit.

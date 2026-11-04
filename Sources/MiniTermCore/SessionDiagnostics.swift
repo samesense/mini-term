@@ -28,6 +28,12 @@ public struct ConnectionFailure: Equatable, Sendable {
             case .keychain(let status): kind = .keychain; code = Int(status)
             case .invalidConnection, .invalidSessionName: kind = .configuration
             }
+        case let mosh as MoshError:
+            switch mosh {
+            case .bootstrap, .invalidBootstrap, .udpUnavailable: kind = .configuration
+            case .inputOverflow: kind = .inputOverflow
+            case .engine: kind = .transport
+            }
         case let io as IOError: kind = .network; code = Int(io.errnoCode)
         case let connection as NIOConnectionError:
             kind = .network

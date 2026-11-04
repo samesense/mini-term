@@ -10,6 +10,7 @@ struct ConnectionView: View {
     @ObservedObject private var keyboardDiagnostics = KeyboardEventDiagnostics.shared
     @AppStorage("keyboard.dualRoleCaps.enabled") private var dualRoleCaps = true
     @AppStorage("connection.autoReconnect") private var autoReconnect = true
+    @AppStorage("connection.experimentalMosh") private var useMosh = false
     @AppStorage("keyboard.dualRoleCaps.source") private var dualRoleSource = DualRoleKeySource.capsLock.rawValue
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -267,6 +268,12 @@ struct ConnectionView: View {
                     Text("Retries up to six times while MiniTerm is active. Reattaches your tmux session; a plain shell opens a new shell. Commands and file transfers are never replayed.")
                 }
                 Section {
+                    Toggle("Use Mosh", isOn: $useMosh)
+                        .accessibilityIdentifier("settings.mosh")
+                } header: { Text("Experimental transport") } footer: {
+                    Text("Applies to new connections. Requires mosh-server on your Mac and reachable UDP ports 60000–61000. SSH still handles authentication, files and previews. Keeps the session through network interruptions while the app remains in memory. Local typing prediction is not included yet.")
+                }
+                Section {
                     Toggle("Dual-role Caps Lock", isOn: $dualRoleCaps)
                         .accessibilityIdentifier("settings.dualRoleCaps")
                     if dualRoleCaps {
@@ -410,7 +417,7 @@ struct ConnectionView: View {
             let connection = try formConnection()
             let seed = try identitySeed()
             error = nil
-            let model = TerminalSessionModel(connection: connection, seed: seed)
+            let model = TerminalSessionModel(connection: connection, seed: seed, usesMosh: useMosh)
             model.onConnected = { [history] in history.remember(ConnectionProfile(connection), connected: true) }
             session = model
         } catch { displayError(error) }

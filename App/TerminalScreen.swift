@@ -38,9 +38,11 @@ private struct TerminalWorkspace: View {
                 Spacer(minLength: 8)
                 Button { showingFiles = true } label: { Image(systemName: "folder") }
                     .accessibilityLabel("Browse Mac files").accessibilityIdentifier("terminal.files")
-                    .disabled(model.state != .connected)
+                    .disabled(model.state != .connected || !model.sshToolsAvailable)
                 if !model.state.isFinished {
-                    Text(model.state.label).font(.caption).foregroundStyle(.secondary)
+                    Text(model.usesMosh && model.state == .connected
+                         ? (model.moshWaitingForNetwork ? "Mosh · Waiting for network…" : model.sshToolsAvailable ? "Mosh" : "Mosh · SSH tools offline") : model.state.label)
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Button {
                     keyboardToggleRequest += 1
@@ -54,7 +56,7 @@ private struct TerminalWorkspace: View {
                     Button { preview.beginEditing() } label: { Image(systemName: "globe") }
                         .accessibilityLabel("Open website preview")
                         .accessibilityIdentifier("terminal.preview")
-                        .disabled(model.state != .connected)
+                        .disabled(model.state != .connected || !model.sshToolsAvailable)
                 }
                 Menu {
                     Button {

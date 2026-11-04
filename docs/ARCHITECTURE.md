@@ -105,3 +105,31 @@ WebKit's per-store proxy has direct failover disabled. Physical iPadOS still imp
 `SSHTransport.startSFTP()` opens a `session` child and requests `subsystem=sftp` after the main SSH connection is authenticated and the terminal is ready. It shares host trust/authentication and socket lifetime, but owns its own flow-controlled channel. A terminal output pause cannot prevent SFTP responses from being read. Closing/replacing SFTP does not close the PTY or preview. Transport teardown closes all three.
 
 `SFTPHandler` confines protocol state to the NIO loop: bounded length-prefixed framing, version-3 negotiation, request identifiers, status handling and deadlines. `SFTPClient` streams local I/O on the concurrent executor and awaits each bounded block. Uploads use WRITE|CREAT|EXCL with 0600 permissions; no delete/truncate/rename request is emitted. Cancellation closes the child, resolving all pending requests and releasing server handles. `RemoteFilesModel` gates UI operations with a generation, cancels on disconnect, and offers completed temporary downloads to the native Files export picker. It never serializes file contents/paths into history or diagnostics. See [file behavior/limits](FILES.md).
+
+## Experimental Mosh backend
+
+`TerminalTransport` is the byte/resize/backpressure interface used by the existing
+`TerminalBridge`. Direct SSH implements it unchanged; `MoshTransport` supplies a
+one-shot dedicated worker through a small C ABI. Ghostty input and screen rendering
+keep using the same in-memory adapter. The app's optional Mosh path authenticates
+an auxiliary-only SSH socket (no interactive shell), then starts `mosh-server` on a
+separate bounded exec channel. The native client uses the SSH socket's actual peer
+address and the ephemeral bootstrap secret.
+
+`NativeClient.cc` embeds pinned Mosh crypto/state synchronization/terminal source
+and protobuf-lite, compiled with Apple CommonCrypto. It produces ANSI screen diffs,
+with a thread-local UTF-8 locale, `poll`, bounded producer/history queues, remote
+resizing, a network-wait callback and bounded asynchronous cancellation. It never
+installs process signals, redirects process stdio, invokes a local shell, or uses
+the CLI frontend's `exit`/`pthread_exit`/job-control paths. Local prediction and
+serialized restoration are deliberately absent.
+
+`TerminalSessionModel` owns Mosh separately from the auxiliary SSH socket. A closed
+SSH parent invalidates tools without finishing a live Mosh session. The parent
+socket's `closeFuture` is observed because NIOSSH consumes `channelInactive` and
+auxiliary mode has no persistent PTY child to report closure. Wake recovery replaces
+only that SSH socket, with generation checks rejecting callbacks from older sockets.
+An actual Mosh end still follows the existing whole-terminal recovery path.
+
+See [Mosh setup and limitations](MOSH.md) and the native component's
+[licensing/provenance](../Vendor/MoshNative/PROVENANCE.md).

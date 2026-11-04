@@ -13,7 +13,10 @@ jobs:
           xcodebuild -version
           swift --version
       - name: Transport tests
-        run: swift test
+        run: |
+          swift build
+          python3 Scripts/build_mosh_test_server.py .build "$RUNNER_TEMP/mini-term-mosh-test-server"
+          MOSH_TEST_SERVER="$RUNNER_TEMP/mini-term-mosh-test-server" swift test
       - name: tmux switcher interaction
         run: |
           brew list --versions tmux || brew install tmux

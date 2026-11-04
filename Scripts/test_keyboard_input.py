@@ -29,6 +29,10 @@ def run_probe(device, fixture_name="KeyboardAdapterProbe.swift", view_name="Keyb
         generator = (root / "Scripts/generate_project.py").read_text().replace("com.samesense.mini-term", bundle)
         (probe / "Scripts/generate_project.py").write_text(generator)
         run(sys.executable, str(probe / "Scripts/generate_project.py"))
+        # Keep app probes on the same transitive pins as the checked-in Xcode project.
+        lockfile = Path("MiniTerm.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved")
+        (probe / lockfile).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(root / lockfile, probe / lockfile)
         (probe / "App/MiniTermApp.swift").write_text("import SwiftUI\n@main struct ProbeApp: App { var body: some Scene { WindowGroup { " + view_name + "() } } }\n")
         screen = probe / "App/TerminalScreen.swift"
         fixtures = [root / "Tests" / name for name in (*extra_fixtures, fixture_name)]
@@ -39,6 +43,7 @@ def run_probe(device, fixture_name="KeyboardAdapterProbe.swift", view_name="Keyb
             run("xcodebuild", "-project", str(probe / "MiniTerm.xcodeproj"), "-scheme", "MiniTerm",
                 "-destination", "id=" + device, "-derivedDataPath", derived,
                 "-clonedSourcePackagesDirPath", "/private/tmp/mini-term-switcher-derived/SourcePackages",
+                "-onlyUsePackageVersionsFromResolvedFile", "-disableAutomaticPackageResolution",
                 "CODE_SIGN_IDENTITY=-", "ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "build", stdout=output, stderr=subprocess.STDOUT)
         app = Path(derived) / "Build/Products/Debug-iphonesimulator/MiniTerm.app"
         run("xcrun", "simctl", "install", device, str(app))
