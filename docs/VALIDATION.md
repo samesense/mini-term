@@ -22,8 +22,9 @@ close controls adapt too. Existing terminal/keyboard safe-area handling is retai
   [running toolbar capture](design/terminal-toolbar.png) uses only generated data.
 - The fixture now waits for the Files sheet's actual dismissal before beginning a
   model-level download, rather than assuming a fixed animation duration.
-- Physical installation/review is pending the iPad being unlocked. The toolbar uses
-  explicit size-class/text-size rows to keep the terminal host stable while UIKit
+- **PASS:** the signed toolbar update was installed and launched on the unlocked
+  physical iPad. Physical touch/appearance acceptance is pending user review.
+  Explicit size-class/text-size rows keep the terminal host stable while UIKit
   updates keyboard geometry.
 
 ## Physical Mosh startup correction — 2026-11-04
